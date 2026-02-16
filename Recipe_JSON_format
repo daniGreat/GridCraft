@@ -1,0 +1,88 @@
+GridCraft loads recipes from JSON files in:
+for server: mods/GreatDani_GridCraft/Recipes/
+for world: AppData\Roaming\Hytale\UserData\Saves\<your world>\mods\GreatDani_GridCraft\Recipes
+
+Each file can contain either:
+A single recipe object, or
+An array of recipe objects (multiple recipes in one file)
+
+Recipe object fields
+pattern (required)
+
+A 3-row crafting pattern (strings). Spaces mean “empty”.
+
+"pattern": [
+  "PPP",
+  " S ",
+  " S "
+]
+
+key (required)
+
+Maps characters used in pattern to ingredients.
+
+Each key entry can be written in 3 ways:
+
+Item id and ReouseTypeID:
+"P": "Wood_Trunk" 
+
+Item with quantity:
+"S": { "item": "Wood_Oak_Trunk", "quantity": 2 }
+
+Resource type with quantity:
+"W": { "resourcetype": "Wood_Trunk", "quantity": 1 }
+
+result (required)
+Output item and quantity:
+"result": { "item": "Tool_Pickaxe_Crude", "quantity": 1 }
+
+Example: single recipe file
+{
+  "pattern": [
+    "   ",
+    "PS ",
+    " W "
+  ],
+  "key": {
+    "P": "Wood_Trunk",
+    "S": { "item": "Wood_Oak_Trunk", "quantity": 2 },
+    "W": { "resourcetype": "Wood_Trunk", "quantity": 1 }
+  },
+  "result": {
+    "item": "Wood_Bamboo_Trunk",
+    "quantity": 10
+  }
+}
+
+Example: multiple recipes in one file
+[
+  {
+    "pattern": [
+      "PPP",
+      " S ",
+      " S "
+    ],
+    "key": {
+      "P": "Wood_Trunk",
+      "S": "Ingredient_Stick"
+    },
+    "result": {
+      "item": "Tool_Pickaxe_Crude",
+      "quantity": 1
+    }
+  },
+  {
+    "pattern": [
+      " P ",
+      "   ",
+      "   "
+    ],
+    "key": {
+      "P": { "resourcetype": "Wood_Trunk", "quantity": 2 }
+    },
+    "result": {
+      "item": "Wood_Bamboo_Trunk_Deco",
+      "quantity": 5
+    }
+  }
+]
