@@ -1,0 +1,98 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.GridCraft_DarkOak_CraftingTable_Block.name",
+    "Description": "server.items.GridCraft_CraftingTable_Block.description"
+  },
+  "ItemLevel": 600,
+  "Icon": "Icons/ItemsGenerated/GridCraft_DarkOakCraftingTable_Block.png",
+  "PlayerAnimationsId": "Block",
+  "Recipe": {
+    "TimeSeconds": 4,
+    "KnowledgeRequired": false,
+    "Input": [
+      {
+        "Quantity": 50,
+        "ResourceTypeId": "Wood_Trunk"
+      }
+    ],
+    "OutputQuantity": 1,
+    "BenchRequirement": [
+      {
+        "Type": "Crafting",
+        "Categories": [
+          "Workbench_Survival"
+        ],
+        "Id": "Workbench"
+      }
+    ]
+  },
+  "Set": "Soil",
+  "BlockType": {
+    "Material": "Solid",
+    "DrawType": "Model",
+    "Group": "Dirt",
+    "Flags": {},
+    "Gathering": {
+      "Breaking": {
+        "GatherType": "Soils"
+      }
+    },
+    "BlockParticleSetId": "Stone",
+    "Interactions": {
+      "Use": {
+        "Interactions": [
+          {
+            "Type": "ChangeState",
+            "Changes": {
+              "default": "Off",
+              "On": "Off",
+              "Off": "On"
+            }
+          }
+        ]
+      }
+    },
+    "BlockEntity": {
+      "Components": {
+        "CraftingTableBlock": {}
+      }
+    },
+    "ParticleColor": "#c38206",
+    "BlockSoundSetId": "Gravel",
+    "TransitionTexture": "BlockTextures/Transition_Ashes.png",
+    "TransitionToGroups": [
+      "Stone",
+      "Lava",
+      "Dirt"
+    ],
+    "CustomModel": "Blocks/GridCraft_OakCraftingTable.blockymodel",
+    "CustomModelTexture": [
+      {
+        "Texture": "BlockTextures/DarkOak_CraftingTable_Texture.png"
+      }
+    ],
+    "State": {
+      "Id": "craftingtable"
+    },
+    "CustomModelScale": 1.7
+  },
+  "Tags": {
+    "Type": [
+      "Soil"
+    ]
+  },
+  "ItemSoundSetId": "ISS_Blocks_Soft",
+  "IconProperties": {
+    "Scale": 0.8,
+    "Rotation": [
+      313,
+      154,
+      0
+    ],
+    "Translation": [
+      2,
+      -7
+    ]
+  },
+  "MaxStack": 16
+}

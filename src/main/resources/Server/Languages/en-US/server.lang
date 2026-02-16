@@ -1,0 +1,4 @@
+items.GridCraft_CraftingTable_Block.name=Crafting Table
+items.GridCraft_CraftingTable_Block.description=This is a crafting table with crafting grid of 3x3.\n• <color is="#008000">Can be crafted in workbench.</color>
+items.GridCraft_DarkOak_CraftingTable_Block.name=Dark Oak Crafting Table
+items.GridCraft_Oak_CraftingTable_Block.name=Oak Crafting Table
