@@ -96,7 +96,7 @@ public class CraftingUI {
                 .setVerticalAlignment(Alignment.Center);
 
 // Create text button style
-         ButtonStyle customButtonStyle = new ButtonStyle()
+        ButtonStyle customButtonStyle = new ButtonStyle()
                 .withDefault(new ButtonStyleState()
                         .withBackground(defaultBg)
                         .withLabelStyle(defaultLabel))
@@ -481,7 +481,7 @@ public class CraftingUI {
 
             ctx.getById("hotbar-grid", ItemGridBuilder.class).ifPresent(storageGrid -> {
                 handleDrop(drop, storageGrid, HOTBAR_SECTION_ID, SALVAGE_SECTION_ID, STORAGE_SECTION_ID, HOTBAR_SECTION_ID, ctx);
-               // HOTBAR_OVERLAYS = buildHotbarOverlays();
+                // HOTBAR_OVERLAYS = buildHotbarOverlays();
                 int cap = playerComponent.getInventory().getHotbar().getCapacity();
                 MyModStyles.applyHotbarSlotStyles(storageGrid, cap);
 

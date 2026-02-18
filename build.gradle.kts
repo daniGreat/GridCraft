@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.example"
-version = "0.3.5"
+version = "0.3.6"
 val javaVersion = 25
 
 repositories {
@@ -20,11 +20,11 @@ dependencies {
     compileOnly(libs.jetbrains.annotations)
     compileOnly(libs.jspecify)
 
-      //implementation("curse.maven:hyui-1431415:7626511")
+//      implementation("curse.maven:hyui-1431415:7640392")
 
     compileOnly(files("libs/HytaleServer.jar"))
 
-    compileOnly("curse.maven:hyui-1431415:7626511")
+    compileOnly("curse.maven:hyui-1431415:7640392")
 }
 
 hytale {
