@@ -7,6 +7,7 @@ import com.greatdani.craftingplugin.ResourceTypePreviewCache;
 import com.greatdani.craftingplugin.styles.MyModStyles;
 import com.hypixel.hytale.assetstore.map.DefaultAssetMap;
 import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.protocol.ItemResourceType;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
 import com.hypixel.hytale.protocol.packets.interface_.CustomUIEventBindingType;
 import com.hypixel.hytale.server.core.Message;
@@ -26,6 +27,8 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
 import java.awt.*;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -34,18 +37,20 @@ import static com.greatdani.craftingplugin.crafting.RecipeRegistry.prettyItemId;
 
 public class CraftingUI {
 
+    // --- State Management ---
     private static final Map<String, CraftingRecipe> currentRecipes = new HashMap<>();
     private static final Map<String, String> selectedRecipeId = new HashMap<>();
+    private static final Map<String, DragState> dragStates = new HashMap<>();
 
+    // --- Constants ---
     private static final int SALVAGE_SECTION_ID = 10;
-    private static final int STORAGE_SECTION_ID = 30;
     private static final int OUTPUT_SECTION_ID = 20;
+    private static final int STORAGE_SECTION_ID = 30;
     private static final int HOTBAR_SECTION_ID = 50;
     private static final int PREVIEW_SECTION_ID = 60;
     private static final int PREVIEW_OUTPUT_SECTION_ID = 70;
 
-    private static boolean isResource;
-
+    private static final int MOUSE_BTN_RIGHT = 3;
 
     public static void open(PlayerRef playerRef, Store<EntityStore> store, Player playerComponent, PlayerAuthentication playerAuthentication) {
         String uuid = playerAuthentication.getUuid().toString();
@@ -54,653 +59,647 @@ public class CraftingUI {
                 .withLifetime(CustomPageLifetime.CanDismiss)
                 .loadHtml("Pages/GridCraft.html");
 
-        HyUIPatchStyle defaultBg = new HyUIPatchStyle()
-                .setTexturePath("ContainerCloseButton.png");
+        setupStaticUI(page, uuid);
+        setupGrids(page, playerComponent);
+        registerEvents(page, uuid, playerRef, store, playerComponent);
 
-        HyUIPatchStyle hoveredBg = new HyUIPatchStyle()
-                .setTexturePath("ContainerCloseButtonHovered.png");
+        page.open(store);
+    }
 
-        HyUIPatchStyle pressedBg = new HyUIPatchStyle()
-                .setTexturePath("ContainerCloseButtonPressed.png");
+    // ==========================================
+    // UI Initialization Methods
+    // ==========================================
 
-        HyUIPatchStyle disabledBg = new HyUIPatchStyle();
-
-        HyUIStyle defaultLabel = new HyUIStyle()
-//                .setTextColor("#ffff00")
-//                .setFontSize(35)
-//                .setOutlineColor("#ffff00")
-//                .setRenderBold(true)
-                .setHorizontalAlignment(Alignment.Center)
-                .setVerticalAlignment(Alignment.Center);
-        HyUIStyle pressedLabel = new HyUIStyle()
-//                .setTextColor("#661404")
-//                .setFontSize(24)
-//                .setOutlineColor("#ffff00")
-//                .setRenderBold(true)
-                .setHorizontalAlignment(Alignment.Center)
-                .setVerticalAlignment(Alignment.Center);
-
-        HyUIStyle hoveredLabel = new HyUIStyle()
-//                .setTextColor("#888888")  // Yellow on hover
-//                .setFontSize(16)
-//                .setOutlineColor("#ffff00")
-//                .setRenderBold(true)
-                .setHorizontalAlignment(Alignment.Center)
-                .setVerticalAlignment(Alignment.Center);
-
-        HyUIStyle disabledLabel = new HyUIStyle()
-//                .setTextColor("#888888")  // Gray when disabled
-//                .setFontSize(16)
-//                .setRenderBold(true)
-                .setHorizontalAlignment(Alignment.Center)
-                .setVerticalAlignment(Alignment.Center);
-
-// Create text button style
+    private static void setupStaticUI(PageBuilder page, String uuid) {
+        // Build Button Styles
         ButtonStyle customButtonStyle = new ButtonStyle()
                 .withDefault(new ButtonStyleState()
-                        .withBackground(defaultBg)
-                        .withLabelStyle(defaultLabel))
+                        .withBackground(new HyUIPatchStyle().setTexturePath("ContainerCloseButton.png"))
+                        .withLabelStyle(new HyUIStyle().setHorizontalAlignment(Alignment.Center).setVerticalAlignment(Alignment.Center)))
                 .withHovered(new ButtonStyleState()
-                        .withBackground(hoveredBg)
-                        .withLabelStyle(hoveredLabel))
+                        .withBackground(new HyUIPatchStyle().setTexturePath("ContainerCloseButtonHovered.png"))
+                        .withLabelStyle(new HyUIStyle().setHorizontalAlignment(Alignment.Center).setVerticalAlignment(Alignment.Center)))
                 .withPressed(new ButtonStyleState()
-                        .withBackground(pressedBg)
-                        .withLabelStyle(pressedLabel))  // Same as default
+                        .withBackground(new HyUIPatchStyle().setTexturePath("ContainerCloseButtonPressed.png"))
+                        .withLabelStyle(new HyUIStyle().setHorizontalAlignment(Alignment.Center).setVerticalAlignment(Alignment.Center)))
                 .withDisabled(new ButtonStyleState()
-                        .withBackground(disabledBg)
-                        .withLabelStyle(disabledLabel))
+                        .withBackground(new HyUIPatchStyle())
+                        .withLabelStyle(new HyUIStyle().setHorizontalAlignment(Alignment.Center).setVerticalAlignment(Alignment.Center)))
                 .withSounds(DefaultStyles.buttonSounds());
 
         page.getById("my-button-uttn", ButtonBuilder.class).ifPresent(button -> {
-
             button.withText("");
             button.withStyle(customButtonStyle);
         });
 
-        page.getById("terminal-view", ItemGridBuilder.class).ifPresent(grid -> {
-            grid.withInventorySectionId(PREVIEW_SECTION_ID);
-            grid.withAreItemsDraggable(false);
-            // create 9 slots ONCE
-            int have = (grid.getSlots() == null) ? 0 : grid.getSlots().size();
-            for (int i = have; i < 9; i++) {
-                grid.addSlot(new ItemGridSlot());
-            }
-            System.out.println("terminal-view slotCount=" + (grid.getSlots()==null ? -1 : grid.getSlots().size()));
-
+        page.getById("craft-button", ButtonBuilder.class).ifPresent(button -> {
+            button.withText("Auto-Fill");
         });
-        page.getById("output-terminal-view", ItemGridBuilder.class).ifPresent(grid -> {
-            grid.withInventorySectionId(PREVIEW_OUTPUT_SECTION_ID);
-            grid.withAreItemsDraggable(false);
-            // create 1 slots ONCE
-            if (grid.getSlots() == null || grid.getSlots().isEmpty()) {
-                grid.addSlot(new ItemGridSlot());
-            }
 
-            System.out.println("output-terminal-view slotCount=" + (grid.getSlots()==null ? -1 : grid.getSlots().size()));
-
+        page.getById("moveto-inventory-button", ButtonBuilder.class).ifPresent(button -> {
+            button.withText("Clear Grid");
         });
 
         page.getById("Recipe", DropdownBoxBuilder.class).ifPresent(dropdown -> {
-
-            HyUIStyle style = new HyUIStyle();
-
             for (CraftingRecipe r : RecipeRegistry.getAllRecipes()) {
-                String id = r.getId();
-                if (id == null || id.isBlank()) continue;
-
-                String label = r.getLabel();
-                if (label == null || label.isBlank()) label = id;
-
-                dropdown.addEntry(id, label); //
+                if (r.getId() == null || r.getId().isBlank()) continue;
+                String label = (r.getLabel() == null || r.getLabel().isBlank()) ? r.getId() : r.getLabel();
+                dropdown.addEntry(r.getId(), label);
             }
             dropdown.addEventListener(CustomUIEventBindingType.ValueChanged, (selectedId, ctx) -> {
                 if (selectedId == null || selectedId.isBlank()) return;
                 selectedRecipeId.put(uuid, selectedId);
 
-
-                // store selected recipe per player
                 CraftingRecipe r = RecipeRegistry.getById(selectedId);
                 if (r == null) return;
 
-                updateRecipePreviewGrid(ctx, r); // <-- this fills terminal-view
-                updateRecipeOutputPreview(ctx, r);       // fills 1x1 output
+                updateRecipePreviewGrid(ctx, r);
+                updateRecipeOutputPreview(ctx, r);
                 ctx.updatePage(false);
             });
-
-            //dropdown.withShowSearchInput(true);
-            dropdown.withStyle(style);
+            dropdown.withStyle(new HyUIStyle());
         });
 
-        page.getById("my-label", LabelBuilder.class).ifPresent(containerBuilder -> {
-            HyUIStyle style = new HyUIStyle();
-            style.setFontSize(20);
-            style.setTextColor("#FFFF00");
-            style.setAlignment(Alignment.Center);
-            style.setRenderBold(true);
+        // Setup Labels
+        setupLabel(page, "my-label", "Crafting Table", 20);
+        setupLabel(page, "my-recipe-label", "Recipes", 20);
+        setupLabel(page, "inventory-label", "Inventory and Hotbar", 18);
+        setupLabel(page, "crafting-label", "Crafting Area", 18);
+    }
 
-            HyUIPadding padding = new HyUIPadding();
-            padding.setBottom(10);
-            padding.setTop(10);
-            containerBuilder.withText("Crafting Table").withPadding(padding).withStyle(style);
+    private static void setupLabel(PageBuilder page, String id, String text, int fontSize) {
+        page.getById(id, LabelBuilder.class).ifPresent(label -> {
+            HyUIStyle style = new HyUIStyle().setFontSize(fontSize).setTextColor("#FFFF00").setAlignment(Alignment.Center).setRenderBold(true);
+            HyUIPadding padding = new HyUIPadding().setBottom(10).setTop(10);
+            label.withText(text).withPadding(padding).withStyle(style);
         });
-        page.getById("my-recipe-label", LabelBuilder.class).ifPresent(containerBuilder -> {
-            HyUIStyle style = new HyUIStyle();
-            style.setFontSize(20);
-            style.setTextColor("#FFFF00");
-            style.setAlignment(Alignment.Center);
-            style.setRenderBold(true);
+    }
 
-            HyUIPadding padding = new HyUIPadding();
-            padding.setBottom(10);
-            padding.setTop(10);
-            containerBuilder.withText("Recipes").withPadding(padding).withStyle(style);
+    private static void setupGrids(PageBuilder page, Player playerComponent) {
+        // Preview Input
+        page.getById("terminal-view", ItemGridBuilder.class).ifPresent(grid -> {
+            grid.withInventorySectionId(PREVIEW_SECTION_ID).withAreItemsDraggable(false);
+            int have = (grid.getSlots() == null) ? 0 : grid.getSlots().size();
+            for (int i = have; i < 9; i++) grid.addSlot(new ItemGridSlot());
         });
 
-        page.getById("inventory-label", LabelBuilder.class).ifPresent(containerBuilder -> {
-            HyUIStyle style = new HyUIStyle();
-            style.setFontSize(18);
-            style.setTextColor("#FFFF00");
-            style.setAlignment(Alignment.Center);
-            style.setRenderBold(true);
-
-            HyUIPadding padding = new HyUIPadding();
-            padding.setBottom(10);
-            padding.setTop(10);
-            containerBuilder.withText("Inventory and Hotbar").withPadding(padding).withStyle(style);
-        });
-        page.getById("crafting-label", LabelBuilder.class).ifPresent(containerBuilder -> {
-            HyUIStyle style = new HyUIStyle();
-            style.setFontSize(18);
-            style.setTextColor("#FFFF00");
-            style.setAlignment(Alignment.Center);
-            style.setRenderBold(true);
-
-            HyUIPadding padding = new HyUIPadding();
-            padding.setBottom(10);
-            padding.setTop(10);
-            containerBuilder.withText("Crafting Area").withPadding(padding).withStyle(style);
-        });
-//        page.getById("my_slot", ItemSlotBuilder.class).ifPresent(gridBuilder -> {
-//
-//            System.out.println("SLot 0 Found");
-//            gridBuilder.withOutlineColor("#888888");
-//            gridBuilder.withOutlineSize(10);
-//            gridBuilder.withBackground("#888888");
-//
-//            //gridBuilder.withStyle(style);
-//        });
-
-        page.addEventListener("my-button-uttn", CustomUIEventBindingType.Activating,
-                (data, ctx) -> {
-
-
-                    ctx.getPage().ifPresent(pages -> pages.close());
-                    playerRef.sendMessage(Message.raw("Exited out of crafting table!"));
-//                    var labelText = ctx.getValueAs("my-label", String.class).orElse("N/A");
-//                    ctx.getById("my-label", LabelBuilder.class).ifPresent(labelBuilder -> {
-//                        labelBuilder.withText("Woah, I changed!");
-//                        ctx.updatePage(true);
-//                    });
-                });
-        page.onDismiss((ctx, wasForceClosed) -> {
-            currentRecipes.remove(uuid);
-            dragStates.remove(uuid);
-            ItemContainer storage = playerComponent.getInventory().getStorage();
-            int capacity = storage.getCapacity();
-
-            ctx.getById("storage-grid", ItemGridBuilder.class).ifPresent(storageGrid -> {
-                for (int slot = 0; slot < capacity; slot++) {
-                    ItemGridSlot gridSlot = storageGrid.getSlot(slot);
-                    ItemStack stack = gridSlot != null ? ItemGridBuilder.getItemStack(gridSlot) : null;
-                    storage.setItemStackForSlot((short)slot, stack);
-                }
-            });
-
-            ctx.getById("hotbar-grid", ItemGridBuilder.class).ifPresent(hotbarGrid -> {
-                ItemContainer hotbar = playerComponent.getInventory().getHotbar();
-                int cap = hotbar.getCapacity();
-
-                for (int slot = 0; slot < cap; slot++) {
-                    ItemGridSlot gridSlot = hotbarGrid.getSlot(slot);
-                    ItemStack stack = gridSlot != null ? ItemGridBuilder.getItemStack(gridSlot) : null;
-                    hotbar.setItemStackForSlot((short) slot, stack);
-                }
-            });
-
-            ctx.getById("salvage-grid", ItemGridBuilder.class).ifPresent(salvageGrid -> {
-                for (int i = 0; i < salvageGrid.getSlots().size(); i++) {
-                    ItemGridSlot gridSlot = salvageGrid.getSlot(i);
-                    ItemStack stack = gridSlot != null ? ItemGridBuilder.getItemStack(gridSlot) : null;
-                    if (stack == null) continue;
-
-                    // Try to find a free slot in inventory
-                    AtomicBoolean placed = new AtomicBoolean(false);
-                    for (short slot = 0; slot < capacity; slot++) {
-                        ItemStack existing = storage.getItemStack(slot);
-                        if (existing == null) {
-                            storage.setItemStackForSlot(slot, stack);
-                            placed.set(true);
-                            break;
-                        }
-                        // Optionally merge with existing matching stacks
-                        if (existing.getItem().getId().equals(stack.getItem().getId())) {
-                            int maxStack = existing.getItem().getMaxStack();
-                            int total = existing.getQuantity() + stack.getQuantity();
-                            if (total <= maxStack) {
-                                storage.setItemStackForSlot(slot, new ItemStack(stack.getItem().getId(), total));
-                                placed.set(true);
-                                break;
-                            } else {
-                                // Fill this slot and continue with remainder
-                                storage.setItemStackForSlot(slot, new ItemStack(stack.getItem().getId(), maxStack));
-                                stack = new ItemStack(stack.getItem().getId(), total - maxStack);
-                            }
-                        }
-                    }
-
-                    if (!placed.get()) {
-                        // Inventory full — drop item on ground or handle however you want
-                        ItemContainer hotbar = playerComponent.getInventory().getHotbar();
-                        int hotbarCap = hotbar.getCapacity();
-                        // same merge/place logic but against hotbar
-                        for (short hSlot = 0; hSlot < hotbarCap; hSlot++) {
-                            ItemStack hExisting = hotbar.getItemStack(hSlot);
-                            if (hExisting == null) {
-                                hotbar.setItemStackForSlot(hSlot, stack);
-                                placed.set(true);
-                                break;
-                            }
-                            // merge with matching stacks
-                            if (hExisting.getItem().getId().equals(stack.getItem().getId())) {
-                                int maxStack = hExisting.getItem().getMaxStack();
-                                int total = hExisting.getQuantity() + stack.getQuantity();
-                                if (total <= maxStack) {
-                                    hotbar.setItemStackForSlot(hSlot, new ItemStack(stack.getItem().getId(), total));
-                                    placed.set(true);
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (!placed.get()) {
-                            ItemUtils.dropItem(playerRef.getReference(), stack, store);
-                        }
-                    }
-                }
-            });
-        });
-        page.getById("output-grid", ItemGridBuilder.class).ifPresent(grid -> {
-            grid.withInventorySectionId(OUTPUT_SECTION_ID);
-            grid.withAllowMaxStackDraggableItems(false);
-            grid.withAreItemsDraggable(true);
-
-            //grid.onSlotDoubleClicking(() -> {});
-
+        // Preview Output
+        page.getById("output-terminal-view", ItemGridBuilder.class).ifPresent(grid -> {
+            grid.withInventorySectionId(PREVIEW_OUTPUT_SECTION_ID).withAreItemsDraggable(false);
+            if (grid.getSlots() == null || grid.getSlots().isEmpty()) grid.addSlot(new ItemGridSlot());
         });
 
-        page.addEventListener("output-grid", CustomUIEventBindingType.Dropped, DroppedEventData.class, (drop, ctx) -> {
-
-        });
-
-        page.addEventListener("salvage-grid", CustomUIEventBindingType.Dropped, DroppedEventData.class, (drop, ctx) -> {
-
-            if (drop.getSlotIndex() == null) {
-                restoreDrag(uuid, SALVAGE_SECTION_ID, STORAGE_SECTION_ID,HOTBAR_SECTION_ID,  ctx);
-                ctx.updatePage(false);
-                return;
-            }
-            ctx.getById("salvage-grid", ItemGridBuilder.class).ifPresent(salvageGrid -> {
-                handleDrop(drop, salvageGrid, SALVAGE_SECTION_ID, SALVAGE_SECTION_ID, STORAGE_SECTION_ID, HOTBAR_SECTION_ID, ctx);
-                int cap = salvageGrid.getSlots().size();
-                MyModStyles.applyInventorySlotStyles(salvageGrid, cap);
-            });
-            ctx.getById("hotbar-grid", ItemGridBuilder.class).ifPresent(hotbarGrid -> {
-                int hotbarCap = playerComponent.getInventory().getHotbar().getCapacity();
-                MyModStyles.applyHotbarSlotStyles(hotbarGrid, hotbarCap);
-            });
-            ctx.getById("storage-grid", ItemGridBuilder.class).ifPresent(storageGrid -> {
-                int invCap = playerComponent.getInventory().getStorage().getCapacity();
-                MyModStyles.applyInventorySlotStyles(storageGrid, invCap);
-            });
-            checkRecipes(uuid, ctx);
-            ctx.updatePage(false);
-        });
-
-        page.addEventListener("salvage-grid", CustomUIEventBindingType.SlotClickPressWhileDragging,
-                SlotClickPressWhileDraggingEventData.class, (e, ctx) -> {
-                    handleSplitSafe(uuid, e, SALVAGE_SECTION_ID, SALVAGE_SECTION_ID, STORAGE_SECTION_ID,playerComponent, ctx);
-                    ctx.updatePage(false);
-                });
-
-        page.addEventListener("storage-grid", CustomUIEventBindingType.SlotClickPressWhileDragging,
-                SlotClickPressWhileDraggingEventData.class, (e, ctx) -> {
-                    handleSplitSafe(uuid, e, STORAGE_SECTION_ID, SALVAGE_SECTION_ID, STORAGE_SECTION_ID, playerComponent, ctx);
-                    ctx.updatePage(false);
-                });
-        page.addEventListener("output-grid", CustomUIEventBindingType.SlotClicking, SlotClickingEventData.class, (click, ctx) -> {
-            ctx.getById("output-grid", ItemGridBuilder.class).ifPresent(outputGrid -> {
-                ItemGridSlot outputSlot = outputGrid.getSlot(0);
-                ItemStack outputStack = outputSlot != null ? ItemGridBuilder.getItemStack(outputSlot) : null;
-                if (outputStack == null) return;
-
-
-                ctx.getById("storage-grid", ItemGridBuilder.class).ifPresent(storageGrid -> {
-                    ItemContainer storage = playerComponent.getInventory().getStorage();
-                    int capacity = storage.getCapacity();
-                    String itemId = outputStack.getItem().getId();
-                    int qty = outputStack.getQuantity();
-                    boolean placed = false;
-
-                    // Try to merge with existing stacks first
-                    for (short slot = 0; slot < capacity; slot++) {
-                        ItemGridSlot existingSlot = storageGrid.getSlot((int)slot);
-                        ItemStack existing = existingSlot != null ? ItemGridBuilder.getItemStack(existingSlot) : null;
-                        if (existing != null && existing.getItem().getId().equals(itemId)) {
-                            int maxStack = existing.getItem().getMaxStack();
-                            int total = existing.getQuantity() + qty;
-                            if (total <= maxStack) {
-                                storageGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, total)), (int)slot);
-                                placed = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    // If not merged, find empty slot
-                    if (!placed) {
-                        for (short slot = 0; slot < capacity; slot++) {
-                            ItemGridSlot existingSlot = storageGrid.getSlot((int)slot);
-                            ItemStack existing = existingSlot != null ? ItemGridBuilder.getItemStack(existingSlot) : null;
-                            if (existing == null) {
-                                storageGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, qty)), (int)slot);
-                                placed = true;
-                                break;
-                            }
-                        }
-                    }
-                    CraftingRecipe recipe = getRecipe(uuid);
-                    if (placed && recipe != null) {
-
-                        consumeIngredients(ctx, recipe);
-                        checkRecipes(uuid, ctx);
-                    }
-                });
-            });
-            ctx.getById("storage-grid", ItemGridBuilder.class).ifPresent(storageGrid -> {
-                int cap = playerComponent.getInventory().getStorage().getCapacity();
-                MyModStyles.applyInventorySlotStyles(storageGrid, cap);
-            });
-            ctx.updatePage(false);
-        });
-
-
-        page.addEventListener("storage-grid", CustomUIEventBindingType.Dropped, DroppedEventData.class, (drop, ctx) -> {
-            if (drop.getSlotIndex() == null) {
-                restoreDrag(uuid, SALVAGE_SECTION_ID, STORAGE_SECTION_ID,HOTBAR_SECTION_ID,  ctx);
-                ctx.updatePage(false);
-                return;
-            }
-
-            if (drop.getSourceInventorySectionId() != null && drop.getSourceInventorySectionId() == OUTPUT_SECTION_ID) {
-                craftOutputIntoStorage(uuid, ctx, playerComponent);
-                ctx.updatePage(false);
-                return;
-            }
-
-            ctx.getById("storage-grid", ItemGridBuilder.class).ifPresent(storageGrid -> {
-                handleDrop(drop, storageGrid, STORAGE_SECTION_ID, SALVAGE_SECTION_ID, STORAGE_SECTION_ID, HOTBAR_SECTION_ID, ctx);
-                int invCap = playerComponent.getInventory().getStorage().getCapacity();
-                MyModStyles.applyInventorySlotStyles(storageGrid, invCap);
-            });
-            ctx.getById("hotbar-grid", ItemGridBuilder.class).ifPresent(hotbarGrid -> {
-
-                int hotbarCap = playerComponent.getInventory().getHotbar().getCapacity();
-                MyModStyles.applyHotbarSlotStyles(hotbarGrid, hotbarCap);
-            });
-            ctx.getById("salvage-grid", ItemGridBuilder.class).ifPresent(salvageGrid -> {
-                int cap = salvageGrid.getSlots().size();
-                MyModStyles.applyInventorySlotStyles(salvageGrid, cap); // if you want same outline there too
-            });
-
-
-            checkRecipes(uuid, ctx);
-            ctx.updatePage(false);
-        });
-        page.addEventListener("hotbar-grid", CustomUIEventBindingType.Dropped, DroppedEventData.class, (drop, ctx) -> {
-            if (drop.getSlotIndex() == null) {
-                restoreDrag(uuid, SALVAGE_SECTION_ID, STORAGE_SECTION_ID,HOTBAR_SECTION_ID,  ctx);
-                ctx.updatePage(false);
-                return;
-            }
-
-            if (drop.getSourceInventorySectionId() != null && drop.getSourceInventorySectionId() == OUTPUT_SECTION_ID) {
-                craftOutputIntoStorage(uuid, ctx, playerComponent);
-                ctx.updatePage(false);
-                return;
-            }
-
-            ctx.getById("hotbar-grid", ItemGridBuilder.class).ifPresent(storageGrid -> {
-                handleDrop(drop, storageGrid, HOTBAR_SECTION_ID, SALVAGE_SECTION_ID, STORAGE_SECTION_ID, HOTBAR_SECTION_ID, ctx);
-                // HOTBAR_OVERLAYS = buildHotbarOverlays();
-                int cap = playerComponent.getInventory().getHotbar().getCapacity();
-                MyModStyles.applyHotbarSlotStyles(storageGrid, cap);
-
-            });
-            ctx.getById("storage-grid", ItemGridBuilder.class).ifPresent(storageGrid -> {
-                int invCap = playerComponent.getInventory().getStorage().getCapacity();
-                MyModStyles.applyInventorySlotStyles(storageGrid, invCap);
-            });
-            ctx.getById("salvage-grid", ItemGridBuilder.class).ifPresent(salvageGrid -> {
-                int cap = salvageGrid.getSlots().size();
-                MyModStyles.applyInventorySlotStyles(salvageGrid, cap); // if you want same outline there too
-            });
-
-            checkRecipes(uuid, ctx);
-            ctx.updatePage(false);
-        });
-
-// Set inventory section IDs HERE during setup, not in event handlers
+        // Salvage / Crafting Grid
         page.getById("salvage-grid", ItemGridBuilder.class).ifPresent(grid -> {
             grid.withInventorySectionId(SALVAGE_SECTION_ID);
-            grid.withAllowMaxStackDraggableItems(false);
-            int cap = grid.getSlots().size();
-            MyModStyles.applyInventorySlotStyles(grid, cap);
-            grid.onSlotDoubleClicking(() -> {
-
-            });
+            MyModStyles.applyInventorySlotStyles(grid, grid.getSlots().size());
         });
-        page.getById("output-grid", ItemGridBuilder.class).ifPresent(MyModStyles::applyOutputSlotStyles);
+
+        // Output Grid
+        page.getById("output-grid", ItemGridBuilder.class).ifPresent(grid -> {
+            grid.withInventorySectionId(OUTPUT_SECTION_ID).withAllowMaxStackDraggableItems(false).withAreItemsDraggable(true);
+            MyModStyles.applyOutputSlotStyles(grid);
+        });
 
         page.getById("storage-grid", ItemGridBuilder.class).ifPresent(grid -> {
-            grid.withInventorySectionId(STORAGE_SECTION_ID);
+            grid.withInventorySectionId(STORAGE_SECTION_ID); // We only need 1 ID now!
+
             ItemContainer storage = playerComponent.getInventory().getStorage();
-            int capacity = storage.getCapacity();
+            ItemContainer hotbar = playerComponent.getInventory().getHotbar();
 
-            for (short slot = 0; slot < capacity; ++slot) {
-                ItemStack s = storage.getItemStack(slot);
-
-                ItemGridSlot slotUi = (s != null) ? new ItemGridSlot(s) : new ItemGridSlot();
-
-                grid.addSlot(slotUi);
+            // Slots 0-35 (Storage)
+            for (int slot = 0; slot < storage.getCapacity(); ++slot) {
+                ItemStack s = storage.getItemStack((short) slot);
+                grid.updateSlot((s != null) ? new ItemGridSlot(s) : new ItemGridSlot(), slot);
             }
-            MyModStyles.applyInventorySlotStyles(grid, capacity);
 
-        });
-
-        page.getById("hotbar-grid", ItemGridBuilder.class).ifPresent(grid -> {
-            grid.withInventorySectionId(HOTBAR_SECTION_ID);
-            ItemContainer storage = playerComponent.getInventory().getHotbar();
-            int capacity = storage.getCapacity();
-
-            for (int slot = 0; slot < capacity; ++slot) {
-
-                ItemStack s = storage.getItemStack((short)slot);
-
-                ItemGridSlot slotUi = (s != null) ? new ItemGridSlot(s) : new ItemGridSlot();
-
-                grid.updateSlot(slotUi, slot);
-
+            // Slots 36-44 (Hotbar)
+            for (int slot = 0; slot < hotbar.getCapacity(); ++slot) {
+                ItemStack s = hotbar.getItemStack((short) slot);
+                grid.updateSlot((s != null) ? new ItemGridSlot(s) : new ItemGridSlot(), slot + storage.getCapacity());
             }
-            MyModStyles.applyHotbarSlotStyles(grid, capacity);
-        });
 
-        page.addEventListener("salvage-grid", CustomUIEventBindingType.DragCancelled, DragCancelledEventData.class, (data, ctx) -> {
-            restoreDrag(uuid, SALVAGE_SECTION_ID, STORAGE_SECTION_ID,HOTBAR_SECTION_ID,  ctx);
-            ctx.updatePage(true);
-        });
-
-        page.addEventListener("storage-grid", CustomUIEventBindingType.DragCancelled, DragCancelledEventData.class, (data, ctx) -> {
-            restoreDrag(uuid, SALVAGE_SECTION_ID, STORAGE_SECTION_ID,HOTBAR_SECTION_ID,  ctx);
-            ctx.updatePage(true);
-        });
-
-        page.open(store);
-    }
-
-    private static void updateRecipeOutputPreview(UIContext ctx, CraftingRecipe recipe) {
-        ctx.getById("output-terminal-view", ItemGridBuilder.class).ifPresent(grid -> {
-            if (grid.getSlots() == null || grid.getSlots().isEmpty()) return;
-
-            ItemStack res = (recipe != null) ? recipe.getResult() : null;
-            grid.updateSlot(res == null ? new ItemGridSlot() : new ItemGridSlot(res), 0);
+            MyModStyles.applyCombinedInventoryStyles(grid);
         });
     }
 
-    private static ItemStack safePreviewStack(String id, int qty) {
-        if (id == null || id.isBlank()) return null;
-        try {
-            ItemStack st = new ItemStack(id, Math.max(1, qty));
-            if (st.getItem() == null) return null;
-            String realId = st.getItem().getId();
-            if (realId == null || realId.isBlank()) return null;
-            return st;
-        } catch (Exception ex) {
-            return null;
-        }
-    }
-    private static boolean hasSlot(ItemGridBuilder grid, int idx) {
-        try {
-            return grid.getSlot(idx) != null;
-        } catch (Exception e) {
-            return false;
-        }
-    }
+    // ==========================================
+    // Event Registration
+    // ==========================================
 
-    private static void updateRecipePreviewGrid(UIContext ctx, CraftingRecipe recipe) {
-        ctx.getById("terminal-view", ItemGridBuilder.class).ifPresent(grid -> {
+    private static void registerEvents(PageBuilder page, String uuid, PlayerRef playerRef, Store<EntityStore> store, Player playerComponent) {
+        page.addEventListener("my-button-uttn", CustomUIEventBindingType.Activating, (data, ctx) -> {
+            ctx.getPage().ifPresent(p -> p.close());
+        });
 
-            if (grid.getSlots() == null || grid.getSlots().size() < 9) return;
+        page.onDismiss((ctx, wasForceClosed) -> handleDismiss(uuid, playerRef, store, playerComponent, ctx));
+
+        page.addEventListener("moveto-inventory-button", CustomUIEventBindingType.Activating, (data, ctx) -> {
+            clearSalvageToInventory(ctx);
+            checkRecipes(uuid, ctx);
+            ctx.updatePage(false);
+        });
+
+        // AUTO-FILL BUTTON
+        page.addEventListener("craft-button", CustomUIEventBindingType.Activating, (data, ctx) -> {
+            int requestedMultiplier = ctx.getValueAs("auto-fill-qty", Double.class).orElse(1.0).intValue();
+            if (requestedMultiplier < 1) requestedMultiplier = 1;
+
+            String recId = selectedRecipeId.get(uuid);
+            if (recId == null) return;
+            CraftingRecipe recipe = RecipeRegistry.getById(recId);
+            if (recipe == null) return;
+
+            var salvageOpt = ctx.getById("salvage-grid", ItemGridBuilder.class);
+            var storageOpt = ctx.getById("storage-grid", ItemGridBuilder.class);
+            if (salvageOpt.isEmpty() || storageOpt.isEmpty()) return;
+
+            ItemGridBuilder salvage = salvageOpt.get();
+            ItemGridBuilder storage = storageOpt.get();
+
+            clearSalvageToInventory(ctx);
 
             String[] pattern = recipe.getPattern();
             if (pattern == null || pattern.length < 3) return;
 
-            // key = "I:Wood_Oak_Trunk" or "R:Wood_Trunk"
-            Map<String, Integer> totals = new HashMap<>();
-
+            // 1. Calculate how many items are needed for ONE full craft of this recipe
+            Map<Character, Integer> charCountPerCraft = new HashMap<>();
             for (int row = 0; row < 3; row++) {
-                String line = (pattern[row] == null) ? "   " : pattern[row];
-                while (line.length() < 3) line += " ";
-
+                String line = pattern[row] == null ? "" : pattern[row];
+                if (line.length() < 3) line = String.format("%-3s", line);
+                if (line.length() > 3) line = line.substring(0, 3);
                 for (int col = 0; col < 3; col++) {
-                    int idx = row * 3 + col;
-                    if (grid.getSlot(idx) == null) return;
-
                     char ch = line.charAt(col);
-
-                    if (ch == ' ') {
-                        grid.updateSlot(new ItemGridSlot(), idx);
-                        continue;
+                    if (ch != ' ') {
+                        int baseQty = recipe.getKeyQuantities().getOrDefault(ch, 1);
+                        charCountPerCraft.put(ch, charCountPerCraft.getOrDefault(ch, 0) + baseQty);
                     }
-
-                    String required = recipe.getKey().get(ch);
-                    int qty = recipe.getKeyQuantities().getOrDefault(ch, 1);
-
-                    Boolean isRes = recipe.getKeyIsResourceType().get(ch);
-                    ItemStack preview = safePreviewStack(required, qty);
-
-                    boolean treatAsResourceType = Boolean.TRUE.equals(isRes) || preview == null;
-
-                    if (treatAsResourceType) {
-                        ItemStack rtPreview = ResourceTypePreviewCache.previewStack(required, qty);
-                        if (rtPreview != null) preview = rtPreview;
-                    }
-
-                    grid.updateSlot(preview == null ? new ItemGridSlot() : new ItemGridSlot(preview), idx);
-
-                    String key = (treatAsResourceType ? "R:" : "I:") + required;
-                    totals.merge(key, qty, Integer::sum);
                 }
             }
 
-            // Build one compact text block
-            StringBuilder out = new StringBuilder();
+            int finalMultiplier = requestedMultiplier;
 
-            for (var e : totals.entrySet()) {
-                String k = e.getKey();
-                int totalQty = e.getValue();
+            // 2. SMART CALCULATOR: Check inventory to see how many we can ACTUALLY afford
+            for (Map.Entry<Character, Integer> entry : charCountPerCraft.entrySet()) {
+                char ch = entry.getKey();
+                int totalNeededPerCraft = entry.getValue();
 
-                boolean isResource = k.startsWith("R:");
-                String id = isResource ? k.substring(2) : k;
+                String requiredId = recipe.getKey().get(ch);
+                Boolean isRes = recipe.getKeyIsResourceType().get(ch);
+                boolean treatAsResource = Boolean.TRUE.equals(isRes);
 
-                if (isResource) {
-                    // Resource type label (not item id!)
-                    String niceType = prettyItemId(id); // or your own prettyResourceType(id)
-                    out.append("ResourceType: Any ")
-                            .append(niceType)
-                            .append(" x")
-                            .append(totalQty)
-                            .append("\n");
-                } else {
-                    // Exact item label
-                    String niceName = getItemDisplayName(id);
-                    out.append("RecipeRequires: ")
-                            .append(niceName)
-                            .append(" x")
-                            .append(totalQty)
-                            .append("\n");
+                // Tally up total available items in inventory
+                int totalAvailable = 0;
+                String bestId = null;
+                Map<String, Integer> availableMatches = new HashMap<>();
+
+                for (int i = 0; i < 45; i++) {
+                    ItemGridSlot slot = storage.getSlot(i);
+                    ItemStack existing = slot != null ? ItemGridBuilder.getItemStack(slot) : null;
+                    if (existing != null) {
+                        String existingId = existing.getItem().getId();
+                        boolean match = false;
+                        if (!treatAsResource) {
+                            match = existingId.equals(requiredId);
+                        } else {
+                            Item itemAsset = (Item) Item.getAssetMap().getAsset(existingId);
+                            ItemResourceType[] rts = itemAsset.getResourceTypes();
+                            if (rts != null) {
+                                for (ItemResourceType rt : rts) {
+                                    if (rt != null && rt.id != null && rt.id.equals(requiredId)) {
+                                        match = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (match) {
+                            int qty = availableMatches.getOrDefault(existingId, 0) + existing.getQuantity();
+                            availableMatches.put(existingId, qty);
+                            if (qty > totalAvailable) {
+                                totalAvailable = qty;
+                                bestId = existingId;
+                            }
+                        }
+                    }
+                }
+
+                if (bestId == null) {
+                    finalMultiplier = 0;
+                    break;
+                }
+
+                // Restrict multiplier based on how much the player actually has
+                int possibleCrafts = totalAvailable / totalNeededPerCraft;
+                if (possibleCrafts < finalMultiplier) {
+                    finalMultiplier = possibleCrafts;
+                }
+
+                // Restrict multiplier so we don't exceed the Item's Max Stack Size in a single slot!
+                Item itemAsset = (Item) Item.getAssetMap().getAsset(bestId);
+                int maxStack = itemAsset != null ? itemAsset.getMaxStack() : 99;
+                int maxBaseQtyInSingleSlot = recipe.getKeyQuantities().getOrDefault(ch, 1);
+                int maxCraftsForStackSize = maxStack / maxBaseQtyInSingleSlot;
+
+                if (maxCraftsForStackSize < finalMultiplier) {
+                    finalMultiplier = maxCraftsForStackSize;
                 }
             }
 
-            String finalText = out.toString().trim();
+            // 3. Actually fill the grid evenly using the smart multiplier!
+            if (finalMultiplier > 0) {
+                for (int row = 0; row < 3; row++) {
+                    String line = pattern[row] == null ? "" : pattern[row];
+                    if (line.length() < 3) line = String.format("%-3s", line);
+                    if (line.length() > 3) line = line.substring(0, 3);
 
-            ctx.getById("recipe-req-text", LabelBuilder.class).ifPresent(l -> {
-                l.withStyle(new HyUIStyle().setTextColor("#4287f5").setAlignment(Alignment.Center));
-                l.withText(finalText);
-            });
+                    for (int col = 0; col < 3; col++) {
+                        int idx = row * 3 + col;
+                        char ch = line.charAt(col);
+                        if (ch == ' ') continue;
+
+                        String requiredId = recipe.getKey().get(ch);
+                        if (requiredId == null) continue;
+
+                        Boolean isRes = recipe.getKeyIsResourceType().get(ch);
+                        boolean treatAsResource = Boolean.TRUE.equals(isRes);
+                        int baseQty = recipe.getKeyQuantities().getOrDefault(ch, 1);
+
+                        int targetQty = baseQty * finalMultiplier;
+
+                        // Pull the items
+                        ItemStack pulledStack = takeFromGrid(requiredId, treatAsResource, targetQty, storage, 45);
+                        if (pulledStack != null) {
+                            salvage.updateSlot(new ItemGridSlot(pulledStack), idx);
+                        }
+                    }
+                }
+            }
+
+            checkRecipes(uuid, ctx);
+            MyModStyles.applyCombinedInventoryStyles(storage);
+            MyModStyles.applyInventorySlotStyles(salvage, 9);
+            ctx.updatePage(false);
+        });
+
+        page.addEventListener("output-grid", CustomUIEventBindingType.SlotClicking, SlotClickingEventData.class, (click, ctx) -> {
+            attemptCrafting(uuid, ctx, playerComponent);
+            ctx.updatePage(false);
+        });
+
+        page.addEventListener("salvage-grid", CustomUIEventBindingType.Dropped, DroppedEventData.class,
+                (drop, ctx) -> handleGridDrop(uuid, drop, ctx, playerComponent, "salvage-grid", SALVAGE_SECTION_ID));
+        page.addEventListener("storage-grid", CustomUIEventBindingType.Dropped, DroppedEventData.class,
+                (drop, ctx) -> handleGridDrop(uuid, drop, ctx, playerComponent, "storage-grid", STORAGE_SECTION_ID));
+
+        // DRAG CANCELS
+        page.addEventListener("salvage-grid", CustomUIEventBindingType.DragCancelled, DragCancelledEventData.class, (data, ctx) -> {
+            restoreDrag(uuid, ctx); ctx.updatePage(true);
+        });
+        page.addEventListener("storage-grid", CustomUIEventBindingType.DragCancelled, DragCancelledEventData.class, (data, ctx) -> {
+            restoreDrag(uuid, ctx); ctx.updatePage(true);
         });
     }
 
-    @Nonnull
-    private static String getItemDisplayName(@Nonnull String itemId) {
-        if (itemId.isBlank()) return itemId;
+    // ==========================================
+    // Event Handlers
+    // ==========================================
 
-        Item item = (Item) Item.getAssetMap().getAsset(itemId);
-        if (item == null || item == Item.UNKNOWN) {
-            return prettyItemId(itemId); // your fallback
-        }
+    private static void handleDismiss(String uuid, PlayerRef playerRef, Store<EntityStore> store, Player playerComponent, UIContext ctx) {
+        currentRecipes.remove(uuid);
+        dragStates.remove(uuid);
 
-        String translationKey = item.getTranslationKey();
-        if (translationKey == null || translationKey.isBlank()) {
-            return prettyItemId(itemId);
-        }
+        ItemContainer storage = playerComponent.getInventory().getStorage();
+        ItemContainer hotbar = playerComponent.getInventory().getHotbar();
+        int storageCap = storage.getCapacity();
 
-        // If you want player's language later, replace "en-US" with that.
-        String translated = I18nModule.get().getMessage("en-US", translationKey);
+        // Save Unified Grid to Inventory & Hotbar
+        ctx.getById("storage-grid", ItemGridBuilder.class).ifPresent(grid -> {
+            // Save Storage (0-35)
+            for (int slot = 0; slot < storageCap; slot++) {
+                ItemGridSlot gridSlot = grid.getSlot(slot);
+                storage.setItemStackForSlot((short) slot, gridSlot != null ? ItemGridBuilder.getItemStack(gridSlot) : null);
+            }
+            // Save Hotbar (36-44)
+            for (int slot = 0; slot < hotbar.getCapacity(); slot++) {
+                ItemGridSlot gridSlot = grid.getSlot(slot + storageCap);
+                hotbar.setItemStackForSlot((short) slot, gridSlot != null ? ItemGridBuilder.getItemStack(gridSlot) : null);
+            }
+        });
 
-        if (translated != null && !translated.isBlank()) {
-            return translated;
-        }
+        // Return salvage items to player or drop them
+        ctx.getById("salvage-grid", ItemGridBuilder.class).ifPresent(salvageGrid -> {
+            for (int i = 0; i < salvageGrid.getSlots().size(); i++) {
+                ItemGridSlot gridSlot = salvageGrid.getSlot(i);
+                ItemStack stack = gridSlot != null ? ItemGridBuilder.getItemStack(gridSlot) : null;
+                if (stack == null) continue;
 
-        return prettyItemId(itemId);
+                stack = tryMergeOrPlaceInContainer(stack, storage);
+                if (stack != null) stack = tryMergeOrPlaceInContainer(stack, hotbar);
+                if (stack != null) ItemUtils.dropItem(playerRef.getReference(), stack, store);
+            }
+        });
     }
 
+    private static void handleGridDrop(String uuid, DroppedEventData drop, UIContext ctx, Player player, String targetGridId, int targetSectionId) {
+        if (drop.getSlotIndex() == null) {
+            restoreDrag(uuid, ctx);
+            ctx.updatePage(false);
+            return;
+        }
 
-    private static CraftingRecipe getRecipe(String uuid) {
-        return currentRecipes.get(uuid);
+        if (drop.getSourceInventorySectionId() != null && drop.getSourceInventorySectionId() == OUTPUT_SECTION_ID) {
+            attemptCrafting(uuid, ctx, player);
+            ctx.updatePage(false);
+            return;
+        }
+
+        ctx.getById(targetGridId, ItemGridBuilder.class).ifPresent(grid -> {
+            processDrop(drop, grid, targetSectionId, ctx);
+        });
+
+        reapplyAllInventoryStyles(ctx, player);
+        checkRecipes(uuid, ctx);
+        ctx.updatePage(false);
+
+    }
+
+    private static void handleDragClick(String uuid, SlotClickPressWhileDraggingEventData e, int sourceSectionId, UIContext ctx) {
+
+        if (e.getDragSourceInventorySectionId() == null || e.getDragSourceInventorySectionId() != sourceSectionId) {
+            return;
+        }
+
+        Integer mouseBtn = e.getClickMouseButton();
+
+        if (mouseBtn == null || mouseBtn == 1) return;
+
+        // ONLY process Middle Click (2) and Right Click (3)
+        if (mouseBtn != 2 && mouseBtn != 3) return;
+
+        Integer sourceIndex = e.getDragSourceSlotId();
+        Integer targetIndex = e.getSlotIndex();
+
+        if (sourceIndex == null || targetIndex == null || targetIndex < 0) return;
+
+        if (sourceIndex.equals(targetIndex)) {
+            return;
+        }
+
+        ItemGridBuilder sourceGrid = getGridBySection(sourceSectionId, ctx);
+
+        if (sourceGrid == null || targetIndex >= sourceGrid.getSlots().size()) return;
+
+        ItemGridSlot srcSlot = sourceGrid.getSlot(sourceIndex);
+        ItemStack src = (srcSlot != null) ? ItemGridBuilder.getItemStack(srcSlot) : null;
+
+        if (src == null || src.getQuantity() < 1) return;
+
+        String itemId = src.getItem().getId();
+        int maxStack = src.getItem().getMaxStack();
+
+        ItemGridSlot dstSlot = sourceGrid.getSlot(targetIndex);
+        ItemStack dst = (dstSlot != null) ? ItemGridBuilder.getItemStack(dstSlot) : null;
+
+        // Determine how much to drop
+        int moveQty = 0;
+        if (mouseBtn == 2) {
+            // MIDDLE CLICK: Drop Half
+            moveQty = Math.max(1, src.getQuantity() / 2);
+        } else if (mouseBtn == 3) {
+            // RIGHT CLICK: Drop exactly 1
+            moveQty = 1;
+        }
+
+        int actuallyMoved = 0;
+        if (dst == null) {
+            actuallyMoved = moveQty;
+            sourceGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, actuallyMoved)), targetIndex);
+        } else if (dst.getItem().getId().equals(itemId)) {
+            int space = maxStack - dst.getQuantity();
+            if (space <= 0) return; // Slot full
+            actuallyMoved = Math.min(moveQty, space);
+            sourceGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, dst.getQuantity() + actuallyMoved)), targetIndex);
+        } else {
+            return;
+        }
+
+        if (actuallyMoved <= 0) return;
+
+
+        int newSrcQty = src.getQuantity() - actuallyMoved;
+        if (newSrcQty > 0) {
+            sourceGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, newSrcQty)), sourceIndex);
+        } else {
+            sourceGrid.updateSlot(new ItemGridSlot(), sourceIndex);
+
+        }
+    }
+
+    private static void processDrop(DroppedEventData drop, ItemGridBuilder targetGrid, int targetSectionId, UIContext ctx) {
+        Integer sourceIndex = drop.getSourceSlotId();
+        Integer targetIndex = drop.getSlotIndex();
+        Integer sourceSection = drop.getSourceInventorySectionId();
+        Integer mouseBtn = drop.getPressedMouseButton();
+
+        if (targetIndex == null) return;
+
+        if (sourceIndex != null && sourceSection != null && sourceSection == targetSectionId && sourceIndex.equals(targetIndex)) {
+            return; // Dropped on self
+        }
+
+        ItemGridBuilder sourceGrid = (sourceSection != null) ? getGridBySection(sourceSection, ctx) : null;
+
+        ItemStack sourceStack = null;
+        int sourceQty = 0;
+        if (sourceGrid != null && sourceIndex != null) {
+            ItemGridSlot s = sourceGrid.getSlot(sourceIndex);
+            sourceStack = s != null ? ItemGridBuilder.getItemStack(s) : null;
+            if (sourceStack != null) sourceQty = sourceStack.getQuantity();
+        }
+
+        String itemId = drop.getItemStackId();
+        int movedQty = drop.getItemStackQuantity();
+
+
+        if (mouseBtn != null) {
+            if (mouseBtn == 3) {
+                // MIDDLE CLICK Release: Drop Half
+                movedQty = sourceStack != null ? Math.max(1, sourceQty / 2) : Math.max(1, movedQty / 2);
+            } else if (mouseBtn == 2) {
+                // RIGHT CLICK Release: Drop exactly 1
+                movedQty = 1;
+            }
+        }
+
+        if (movedQty <= 0) return;
+
+        if (sourceStack != null) {
+            movedQty = Math.min(movedQty, sourceQty);
+            if (movedQty <= 0) return;
+        }
+
+        ItemGridSlot targetSlot = targetGrid.getSlot(targetIndex);
+        ItemStack existingTarget = targetSlot != null ? ItemGridBuilder.getItemStack(targetSlot) : null;
+
+        int overflowBack = 0;
+
+        if (existingTarget == null) {
+            targetGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, movedQty)), targetIndex);
+        } else if (existingTarget.getItem().getId().equals(itemId)) {
+            int space = existingTarget.getItem().getMaxStack() - existingTarget.getQuantity();
+            if (space <= 0) return;
+
+            int placed = Math.min(movedQty, space);
+            overflowBack = movedQty - placed;
+            targetGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, existingTarget.getQuantity() + placed)), targetIndex);
+        } else {
+            // Swap items (Only allow swapping if they dropped the FULL stack!)
+            if (sourceStack != null && movedQty < sourceQty) return;
+
+            targetGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, movedQty)), targetIndex);
+            if (sourceGrid != null && sourceIndex != null) {
+                sourceGrid.updateSlot(new ItemGridSlot(new ItemStack(existingTarget.getItem().getId(), existingTarget.getQuantity())), sourceIndex);
+            }
+            return;
+        }
+
+        // Send any remaining/un-dropped items safely back to the source slot
+        if (sourceGrid != null && sourceIndex != null && sourceStack != null) {
+            int finalSourceQty = (sourceQty - movedQty) + overflowBack;
+            if (finalSourceQty > 0) {
+                sourceGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, finalSourceQty)), sourceIndex);
+            } else {
+                sourceGrid.updateSlot(new ItemGridSlot(), sourceIndex);
+            }
+        }
+    }
+
+    private static void handleSplitSafe(String uuid, SlotClickPressWhileDraggingEventData e, int targetSectionId, UIContext ctx) {
+        Integer mouseBtn = e.getClickMouseButton();
+
+        if (mouseBtn == null || (mouseBtn != 1 && mouseBtn != 3)) {
+            return; // Ignore invalid clicks
+        }
+
+        Integer sourceIndex = e.getDragSourceSlotId();
+        Integer targetIndex = e.getSlotIndex();
+        Integer sourceSection = e.getDragSourceInventorySectionId();
+
+        // ---- DEBUG PRINT 1 ----
+        System.out.println("[SPLIT DEBUG] SourceSec: " + sourceSection + ", SourceIdx: " + sourceIndex +
+                "  -->  TargetSec: " + targetSectionId + ", TargetIdx: " + targetIndex);
+
+        if (sourceIndex == null || sourceSection == null) {
+            System.out.println("[SPLIT DEBUG] Aborted: Source Index or Section is null!");
+            return;
+        }
+        if (targetIndex == null || targetIndex < 0) {
+            restoreDrag(uuid, ctx);
+            return;
+        }
+
+        ItemGridBuilder targetGrid = getGridBySection(targetSectionId, ctx);
+        ItemGridBuilder sourceGrid = getGridBySection(sourceSection, ctx);
+
+        // ---- DEBUG PRINT 2 ----
+        if (sourceGrid == null || targetGrid == null) {
+            System.out.println("[SPLIT DEBUG] Aborted: Grids not found! SourceGrid Exists? " + (sourceGrid != null) +
+                    " | TargetGrid Exists? " + (targetGrid != null));
+            restoreDrag(uuid, ctx);
+            return;
+        }
+
+        if (sourceGrid == targetGrid && sourceIndex.equals(targetIndex)) return;
+
+        ItemGridSlot srcSlot = sourceGrid.getSlot(sourceIndex);
+        ItemStack src = (srcSlot != null) ? ItemGridBuilder.getItemStack(srcSlot) : null;
+
+        // ---- DEBUG PRINT 3 ----
+        if (src == null || src.getQuantity() < 1) {
+            System.out.println("[SPLIT DEBUG] Aborted: Source stack is empty or null!");
+            clearDrag(uuid);
+            return;
+        }
+
+        beginDragIfNeeded(uuid, src, sourceIndex, sourceSection);
+
+        String itemId = src.getItem().getId();
+        int maxStack = src.getItem().getMaxStack();
+
+        ItemGridSlot dstSlot = targetGrid.getSlot(targetIndex);
+        ItemStack dst = (dstSlot != null) ? ItemGridBuilder.getItemStack(dstSlot) : null;
+
+        int moveQty = (mouseBtn == 3) ? Math.max(1, src.getQuantity() / 2) : 1;
+        int actuallyMoved = 0;
+        ItemStack newDst = null;
+
+        if (dst == null) {
+            actuallyMoved = moveQty;
+            newDst = new ItemStack(itemId, actuallyMoved);
+        } else if (dst.getItem().getId().equals(itemId)) {
+            int space = maxStack - dst.getQuantity();
+            if (space <= 0) {
+                System.out.println("[SPLIT DEBUG] Aborted: Target slot is full!");
+                clearDrag(uuid);
+                return;
+            }
+            actuallyMoved = Math.min(moveQty, space);
+            newDst = new ItemStack(itemId, dst.getQuantity() + actuallyMoved);
+        } else {
+            System.out.println("[SPLIT DEBUG] Aborted: Items do not match!");
+            clearDrag(uuid);
+            return;
+        }
+
+        if (actuallyMoved <= 0) {
+            clearDrag(uuid);
+            return;
+        }
+
+        targetGrid.updateSlot(new ItemGridSlot(newDst), targetIndex);
+
+        int newSrcQty = src.getQuantity() - actuallyMoved;
+        if (newSrcQty > 0) {
+            sourceGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, newSrcQty)), sourceIndex);
+        } else {
+            sourceGrid.updateSlot(new ItemGridSlot(), sourceIndex);
+        }
+
+        // ---- DEBUG PRINT 4 ----
+        System.out.println("[SPLIT DEBUG] SUCCESS! Split " + actuallyMoved + " items across grids.");
+        clearDrag(uuid);
+    }
+
+    // ==========================================
+    // Crafting Logic
+    // ==========================================
+
+    private static void attemptCrafting(String uuid, UIContext ctx, Player playerComponent) {
+        var outputGridOpt = ctx.getById("output-grid", ItemGridBuilder.class);
+        var storageGridOpt = ctx.getById("storage-grid", ItemGridBuilder.class);
+        if (outputGridOpt.isEmpty() || storageGridOpt.isEmpty()) return;
+
+        ItemGridBuilder outputGrid = outputGridOpt.get();
+        ItemGridBuilder storageGrid = storageGridOpt.get();
+
+        ItemGridSlot outSlot = outputGrid.getSlot(0);
+        ItemStack outputStack = outSlot != null ? ItemGridBuilder.getItemStack(outSlot) : null;
+        if (outputStack == null) return;
+
+        int capacity = playerComponent.getInventory().getStorage().getCapacity();
+        boolean placed = tryInsertIntoGrid(outputStack, storageGrid, capacity);
+
+        CraftingRecipe recipe = currentRecipes.get(uuid);
+        if (placed && recipe != null) {
+            consumeIngredients(ctx, recipe);
+            checkRecipes(uuid, ctx);
+        }
+
+        MyModStyles.applyCombinedInventoryStyles(storageGrid);
     }
 
     private static void checkRecipes(String uuid, UIContext ctx) {
-
         ctx.getById("salvage-grid", ItemGridBuilder.class).ifPresent(salvageGrid -> {
             CraftingRecipe recipe = RecipeRegistry.findMatch(salvageGrid);
             currentRecipes.put(uuid, recipe);
@@ -709,8 +708,7 @@ public class CraftingUI {
                 outputGrid.updateSlot(recipe != null ? new ItemGridSlot(recipe.getResult()) : new ItemGridSlot(), 0);
                 MyModStyles.applyOutputSlotStyles(outputGrid);
             });
-            int cap = salvageGrid.getSlots().size();
-            MyModStyles.applyInventorySlotStyles(salvageGrid, cap);
+            MyModStyles.applyInventorySlotStyles(salvageGrid, salvageGrid.getSlots().size());
         });
     }
 
@@ -724,505 +722,375 @@ public class CraftingUI {
                 ItemStack stack = slot != null ? ItemGridBuilder.getItemStack(slot) : null;
                 if (stack == null) continue;
 
-                int consume = recipe.getRequiredQuantity(patternChar);
-                int newQty = stack.getQuantity() - consume;
-
-                if (newQty > 0) {
-                    salvageGrid.updateSlot(new ItemGridSlot(new ItemStack(stack.getItem().getId(), newQty)), i);
-                } else {
-                    salvageGrid.updateSlot(new ItemGridSlot(), i);
-                }
+                int newQty = stack.getQuantity() - recipe.getRequiredQuantity(patternChar);
+                salvageGrid.updateSlot(newQty > 0 ? new ItemGridSlot(new ItemStack(stack.getItem().getId(), newQty)) : new ItemGridSlot(), i);
             }
         });
     }
 
+    // ==========================================
+    // Grid Setup & Previews
+    // ==========================================
 
-    private static void craftOutputIntoStorage(String uuid, UIContext ctx, Player playerComponent) {
-        var outputGridOpt = ctx.getById("output-grid", ItemGridBuilder.class);
-        var storageGridOpt = ctx.getById("storage-grid", ItemGridBuilder.class);
-        if (outputGridOpt.isEmpty() || storageGridOpt.isEmpty()) return;
+    private static void updateRecipePreviewGrid(UIContext ctx, CraftingRecipe recipe) {
+        ctx.getById("terminal-view", ItemGridBuilder.class).ifPresent(grid -> {
+            if (grid.getSlots() == null || grid.getSlots().size() < 9) return;
 
-        ItemGridBuilder outputGrid = outputGridOpt.get();
-        ItemGridBuilder storageGrid = storageGridOpt.get();
+            String[] pattern = recipe.getPattern();
+            if (pattern == null || pattern.length < 3) return;
 
-        ItemGridSlot outSlot = outputGrid.getSlot(0);
-        ItemStack outputStack = outSlot != null ? ItemGridBuilder.getItemStack(outSlot) : null;
-        if (outputStack == null) return;
+            Map<String, Integer> totals = new HashMap<>();
 
-        // reuse your existing merge logic (copy-paste from SlotClicking)
-        String itemId = outputStack.getItem().getId();
-        int qty = outputStack.getQuantity();
+            for (int row = 0; row < 3; row++) {
+                // Use the row line from the pattern array
+                String line = pattern[row] == null ? "" : pattern[row];
+                if (line.length() < 3) line = String.format("%-3s", line);
+                if (line.length() > 3) line = line.substring(0, 3);
 
-        ItemContainer storage = playerComponent.getInventory().getStorage();
-        int capacity = storage.getCapacity();
-        boolean placed = false;
+                for (int col = 0; col < 3; col++) {
+                    int idx = row * 3 + col;
+                    char ch = line.charAt(col);
 
-        for (short slot = 0; slot < capacity; slot++) {
-            ItemGridSlot existingSlot = storageGrid.getSlot((int) slot);
+                    if (ch == ' ') {
+                        grid.updateSlot(new ItemGridSlot(), idx);
+                        continue;
+                    }
+
+                    String required = recipe.getKey().get(ch);
+
+
+                    if (required == null) {
+                        grid.updateSlot(new ItemGridSlot(), idx);
+                        continue;
+                    }
+
+                    int qty = recipe.getKeyQuantities().getOrDefault(ch, 1);
+                    Boolean isRes = recipe.getKeyIsResourceType().get(ch);
+
+                    ItemStack preview = safePreviewStack(required, qty);
+                    boolean treatAsResourceType = Boolean.TRUE.equals(isRes) || preview == null;
+
+                    if (treatAsResourceType) {
+                        ItemStack rtPreview = ResourceTypePreviewCache.previewStack(required, qty);
+                        if (rtPreview != null) preview = rtPreview;
+                    }
+
+                    grid.updateSlot(preview == null ? new ItemGridSlot() : new ItemGridSlot(preview), idx);
+                    totals.merge((treatAsResourceType ? "R:" : "I:") + required, qty, Integer::sum);
+                }
+            }
+
+            StringBuilder out = new StringBuilder();
+            for (var e : totals.entrySet()) {
+                String k = e.getKey();
+                int totalQty = e.getValue();
+                boolean isResource = k.startsWith("R:");
+                String id = k.substring(2);
+
+                if (isResource) {
+                    out.append("ResourceType: Any ").append(prettyItemId(id)).append(" x").append(totalQty).append("\n");
+                } else {
+                    out.append("RecipeRequires: ").append(getItemDisplayName(id)).append(" x").append(totalQty).append("\n");
+                }
+            }
+
+            ctx.getById("recipe-req-text", LabelBuilder.class).ifPresent(l -> {
+                l.withStyle(new HyUIStyle().setTextColor("#4287f5").setAlignment(Alignment.Center));
+                l.withText(out.toString().trim());
+            });
+        });
+    }
+
+    private static void updateRecipeOutputPreview(UIContext ctx, CraftingRecipe recipe) {
+        ctx.getById("output-terminal-view", ItemGridBuilder.class).ifPresent(grid -> {
+            if (grid.getSlots() == null || grid.getSlots().isEmpty()) return;
+            ItemStack res = (recipe != null) ? recipe.getResult() : null;
+            grid.updateSlot(res == null ? new ItemGridSlot() : new ItemGridSlot(res), 0);
+        });
+    }
+
+    // ==========================================
+    // Utility Methods
+    // ==========================================
+
+    private static ItemGridBuilder getGridBySection(int sectionId, UIContext ctx) {
+        String id = switch (sectionId) {
+            case SALVAGE_SECTION_ID -> "salvage-grid";
+            case STORAGE_SECTION_ID -> "storage-grid";
+            case HOTBAR_SECTION_ID -> "hotbar-grid";
+            default -> null;
+        };
+        return (id != null) ? ctx.getById(id, ItemGridBuilder.class).orElse(null) : null;
+    }
+
+    private static void reapplyAllInventoryStyles(UIContext ctx, Player player) {
+        ctx.getById("salvage-grid", ItemGridBuilder.class).ifPresent(grid ->
+                MyModStyles.applyInventorySlotStyles(grid, grid.getSlots().size()));
+
+        ctx.getById("storage-grid", ItemGridBuilder.class).ifPresent(MyModStyles::applyCombinedInventoryStyles);
+    }
+
+    private static boolean tryInsertIntoGrid(ItemStack itemStack, ItemGridBuilder gridBuilder, int gridCapacity) {
+        String itemId = itemStack.getItem().getId();
+        int qty = itemStack.getQuantity();
+
+        // Try merge
+        for (int slot = 0; slot < gridCapacity; slot++) {
+            ItemGridSlot existingSlot = gridBuilder.getSlot(slot);
             ItemStack existing = existingSlot != null ? ItemGridBuilder.getItemStack(existingSlot) : null;
             if (existing != null && existing.getItem().getId().equals(itemId)) {
-                int maxStack = existing.getItem().getMaxStack();
                 int total = existing.getQuantity() + qty;
+                if (total <= existing.getItem().getMaxStack()) {
+                    gridBuilder.updateSlot(new ItemGridSlot(new ItemStack(itemId, total)), slot);
+                    return true;
+                }
+            }
+        }
+        // Try Empty
+        for (int slot = 0; slot < gridCapacity; slot++) {
+            ItemGridSlot existingSlot = gridBuilder.getSlot(slot);
+            if (existingSlot == null || ItemGridBuilder.getItemStack(existingSlot) == null) {
+                gridBuilder.updateSlot(new ItemGridSlot(new ItemStack(itemId, qty)), slot);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static ItemStack tryMergeOrPlaceInContainer(ItemStack stack, ItemContainer container) {
+        int capacity = container.getCapacity();
+        String itemId = stack.getItem().getId();
+
+        // 1. Try to merge
+        for (short slot = 0; slot < capacity; slot++) {
+            ItemStack existing = container.getItemStack(slot);
+            if (existing != null && existing.getItem().getId().equals(itemId)) {
+                int maxStack = existing.getItem().getMaxStack();
+                int total = existing.getQuantity() + stack.getQuantity();
+
                 if (total <= maxStack) {
-                    storageGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, total)), (int) slot);
-                    placed = true;
-                    break;
+                    container.setItemStackForSlot(slot, new ItemStack(itemId, total));
+                    return null; // Placed fully
+                } else {
+                    container.setItemStackForSlot(slot, new ItemStack(itemId, maxStack));
+                    stack = new ItemStack(itemId, total - maxStack); // Keep trying to place remainder
+                }
+            }
+        }
+        // 2. Try to find empty slot
+        for (short slot = 0; slot < capacity; slot++) {
+            if (container.getItemStack(slot) == null) {
+                container.setItemStackForSlot(slot, stack);
+                return null; // Placed fully
+            }
+        }
+        return stack; // Return unplaced remainder
+    }
+
+    private static ItemStack safePreviewStack(String id, int qty) {
+        if (id == null || id.isBlank()) return null;
+        try {
+            ItemStack st = new ItemStack(id, Math.max(1, qty));
+            if (st.getItem() == null || st.getItem().getId() == null || st.getItem().getId().isBlank()) return null;
+            return st;
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    @Nonnull
+    private static String getItemDisplayName(@Nonnull String itemId) {
+        if (itemId.isBlank()) return itemId;
+
+        Item item = (Item) Item.getAssetMap().getAsset(itemId);
+        if (item == null || item == Item.UNKNOWN) return prettyItemId(itemId);
+
+        String translationKey = item.getTranslationKey();
+        if (translationKey == null || translationKey.isBlank()) return prettyItemId(itemId);
+
+        String translated = I18nModule.get().getMessage("en-US", translationKey);
+        return (translated != null && !translated.isBlank()) ? translated : prettyItemId(itemId);
+    }
+
+    private static void clearSalvageToInventory(UIContext ctx) {
+        var salvageOpt = ctx.getById("salvage-grid", ItemGridBuilder.class);
+        var storageOpt = ctx.getById("storage-grid", ItemGridBuilder.class);
+        if (salvageOpt.isEmpty() || storageOpt.isEmpty()) return;
+
+        ItemGridBuilder salvage = salvageOpt.get();
+        ItemGridBuilder storage = storageOpt.get();
+        boolean changed = false;
+
+        for (int i = 0; i < 9; i++) {
+            ItemGridSlot sSlot = salvage.getSlot(i);
+            ItemStack sStack = sSlot != null ? ItemGridBuilder.getItemStack(sSlot) : null;
+            if (sStack == null) continue;
+
+            ItemStack remainder = pushToGrid(sStack, storage, 45);
+            if (remainder == null) {
+                salvage.updateSlot(new ItemGridSlot(), i); // Fully moved
+                changed = true;
+            } else if (remainder.getQuantity() != sStack.getQuantity()) {
+                salvage.updateSlot(new ItemGridSlot(remainder), i); // Partially moved
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            MyModStyles.applyCombinedInventoryStyles(storage);
+            MyModStyles.applyInventorySlotStyles(salvage, 9);
+        }
+    }
+
+    private static ItemStack pushToGrid(ItemStack stack, ItemGridBuilder grid, int capacity) {
+        String itemId = stack.getItem().getId();
+        int qty = stack.getQuantity();
+        int max = stack.getItem().getMaxStack();
+
+        // Try merging into existing stacks
+        for (int i = 0; i < capacity; i++) {
+            ItemGridSlot slot = grid.getSlot(i);
+            ItemStack existing = slot != null ? ItemGridBuilder.getItemStack(slot) : null;
+            if (existing != null && existing.getItem().getId().equals(itemId)) {
+                int space = max - existing.getQuantity();
+                if (space > 0) {
+                    int move = Math.min(qty, space);
+                    grid.updateSlot(new ItemGridSlot(new ItemStack(itemId, existing.getQuantity() + move)), i);
+                    qty -= move;
+                    if (qty <= 0) return null; // All placed
+                }
+            }
+        }
+        // Place remainder in empty slots
+        for (int i = 0; i < capacity; i++) {
+            ItemGridSlot slot = grid.getSlot(i);
+            ItemStack existing = slot != null ? ItemGridBuilder.getItemStack(slot) : null;
+            if (existing == null) {
+                grid.updateSlot(new ItemGridSlot(new ItemStack(itemId, qty)), i);
+                return null; // All placed
+            }
+        }
+        return new ItemStack(itemId, qty); // Inventory is full, return what's left
+    }
+
+    private static boolean hasResourceType(Item itemAsset, String desiredId) {
+        if (itemAsset == null) return false;
+        Object rtsObj = itemAsset.getResourceTypes();
+        if (rtsObj == null) return false;
+
+        // If it's a Collection
+        if (rtsObj instanceof Collection<?> c) {
+            for (Object o : c) {
+                if (o == null) continue;
+                if (desiredId.equals(o)) return true;
+                if (desiredId.equals(o.toString())) return true;
+            }
+            return false;
+        }
+
+        // If it's an array
+        if (rtsObj.getClass().isArray()) {
+            int len = java.lang.reflect.Array.getLength(rtsObj);
+            for (int i = 0; i < len; i++) {
+                Object o = java.lang.reflect.Array.get(rtsObj, i);
+                if (o == null) continue;
+                if (desiredId.equals(o)) return true;
+                if (desiredId.equals(o.toString())) return true;
+            }
+            return false;
+        }
+
+        // Unknown type
+        return desiredId.equals(rtsObj.toString());
+    }
+
+    private static ItemStack takeFromGrid(String desiredId, boolean isResource, int requiredQty, ItemGridBuilder grid, int capacity) {
+        // First pass: Find all items that match the requirement
+        Map<String, Integer> availableMatches = new HashMap<>();
+
+        for (int i = 0; i < capacity; i++) {
+            ItemGridSlot slot = grid.getSlot(i);
+            ItemStack existing = slot != null ? ItemGridBuilder.getItemStack(slot) : null;
+            if (existing != null) {
+                String existingId = existing.getItem().getId();
+                boolean match = false;
+
+                if (!isResource) {
+                    match = existingId.equals(desiredId);
+                } else {
+                    // It's a resource type! Check if the item has this resource type attached.
+                    Item itemAsset = (Item) Item.getAssetMap().getAsset(existingId);
+                    ItemResourceType[] rts = itemAsset.getResourceTypes();
+                    if (rts != null) {
+                        for (ItemResourceType rt : rts) {
+                            if (rt != null && rt.id != null && rt.id.equals(desiredId)) {
+                                match = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (match) {
+                    availableMatches.put(existingId, availableMatches.getOrDefault(existingId, 0) + existing.getQuantity());
                 }
             }
         }
 
-        if (!placed) {
-            for (short slot = 0; slot < capacity; slot++) {
-                ItemGridSlot existingSlot = storageGrid.getSlot((int) slot);
-                ItemStack existing = existingSlot != null ? ItemGridBuilder.getItemStack(existingSlot) : null;
-                if (existing == null) {
-                    storageGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, qty)), (int) slot);
-                    placed = true;
-                    break;
+        // Find the matching Item ID that we have the MOST of
+        String chosenId = null;
+        int maxAvailable = 0;
+        for (Map.Entry<String, Integer> entry : availableMatches.entrySet()) {
+            if (entry.getValue() > maxAvailable) {
+                chosenId = entry.getKey();
+                maxAvailable = entry.getValue();
+            }
+        }
+
+        if (chosenId == null || maxAvailable <= 0) return null; // Player does not have this item
+
+
+        Item itemAsset = (Item) Item.getAssetMap().getAsset(chosenId);
+        int maxStack = itemAsset != null ? itemAsset.getMaxStack() : 99; // Fallback to 99 if missing
+
+        int actualTake = Math.min(requiredQty, maxAvailable);
+        actualTake = Math.min(actualTake, maxStack);
+
+        // Second pass: Actually remove the calculated quantity from the grid!
+        int remainingToTake = actualTake;
+        for (int i = 0; i < capacity && remainingToTake > 0; i++) {
+            ItemGridSlot slot = grid.getSlot(i);
+            ItemStack existing = slot != null ? ItemGridBuilder.getItemStack(slot) : null;
+
+            if (existing != null && existing.getItem().getId().equals(chosenId)) {
+                int take = Math.min(existing.getQuantity(), remainingToTake);
+                remainingToTake -= take;
+                int newQty = existing.getQuantity() - take;
+
+                if (newQty > 0) {
+                    grid.updateSlot(new ItemGridSlot(new ItemStack(chosenId, newQty)), i);
+                } else {
+                    grid.updateSlot(new ItemGridSlot(), i);
                 }
             }
         }
-        CraftingRecipe recipe = getRecipe(uuid);
-        if (placed  && recipe != null) {
-            consumeIngredients(ctx, recipe);
-            checkRecipes(uuid, ctx);
-        }
 
-        ctx.getById("storage-grid", ItemGridBuilder.class).ifPresent(grid -> {
-            int cap = playerComponent.getInventory().getStorage().getCapacity();
-            MyModStyles.applyInventorySlotStyles(storageGrid, cap);
-        });
-    }
-    private static void handleOneSplit(
-            String uuid,
-            SlotClickPressWhileDraggingEventData e,
-            int targetSectionId,
-            int salvageSectionId,
-            int storageSectionId,
-            UIContext ctx
-    ) {
-        Integer mouseButton = e.getDragPressedMouseButton();
-        Integer sourceIndex = e.getDragSourceSlotId();
-        Integer targetIndex = e.getSlotIndex();
-        Integer sourceSection = e.getDragSourceInventorySectionId();
-
-        // Right-click only (mouse button 3). If you want half-split, change moveQty below.
-        if (mouseButton == null || mouseButton != 3) return;
-
-        if (sourceIndex == null || sourceSection == null) return;
-
-        // Clicked outside UI / not on a slot => restore
-        if (targetIndex == null || targetIndex < 0) {
-            restoreDrag(uuid, salvageSectionId, storageSectionId, HOTBAR_SECTION_ID, ctx);
-            return;
-        }
-
-        String targetGridId = (targetSectionId == storageSectionId) ? "storage-grid" : "salvage-grid";
-        ItemGridBuilder targetGrid = ctx.getById(targetGridId, ItemGridBuilder.class).orElse(null);
-
-        ItemGridBuilder sourceGrid =
-                (sourceSection == salvageSectionId) ? ctx.getById("salvage-grid", ItemGridBuilder.class).orElse(null) :
-                        (sourceSection == storageSectionId) ? ctx.getById("storage-grid", ItemGridBuilder.class).orElse(null) :
-                                (sourceSection == targetSectionId) ? targetGrid :
-                                        null;
-
-        if (sourceGrid == null || targetGrid == null) {
-            restoreDrag(uuid, salvageSectionId, storageSectionId, HOTBAR_SECTION_ID,  ctx);
-            return;
-        }
-
-        // Same slot => ignore
-        if (sourceGrid == targetGrid && sourceIndex.equals(targetIndex)) return;
-
-        ItemGridSlot srcSlot = sourceGrid.getSlot(sourceIndex);
-        ItemStack src = (srcSlot != null) ? ItemGridBuilder.getItemStack(srcSlot) : null;
-        if (src == null) {
-            restoreDrag(uuid, salvageSectionId, storageSectionId, HOTBAR_SECTION_ID, ctx);
-            return;
-        }
-
-        beginDragIfNeeded(uuid, src, sourceIndex, sourceSection);
-
-        int srcQty = src.getQuantity();
-        if (srcQty < 2) {
-            clearDrag(uuid);
-            return;
-        }
-
-        String itemId = src.getItem().getId();
-        int maxStack = src.getItem().getMaxStack();
-
-
-        ItemGridSlot dstSlot = targetGrid.getSlot(targetIndex);
-        ItemStack dst = (dstSlot != null) ? ItemGridBuilder.getItemStack(dstSlot) : null;
-        int moveQty = 1;
-
-        int actuallyMoved = 0;
-        ItemStack newDst = null;
-
-        if (dst == null) {
-            actuallyMoved = moveQty;
-            newDst = new ItemStack(itemId, actuallyMoved);
-        } else if (dst.getItem().getId().equals(itemId)) {
-            int space = maxStack - dst.getQuantity();
-            if (space <= 0) {
-                clearDrag(uuid);
-                return; // full stack, nothing happens
-            }
-            actuallyMoved = Math.min(moveQty, space);
-            newDst = new ItemStack(itemId, dst.getQuantity() + actuallyMoved);
-        } else {
-            clearDrag(uuid);
-            return; // different item in target => do nothing
-        }
-
-        if (actuallyMoved <= 0) {
-            clearDrag(uuid);
-            return;
-        }
-
-        // Apply updates (target first, then source)
-        targetGrid.updateSlot(new ItemGridSlot(newDst), targetIndex);
-
-        int newSrcQty = srcQty - actuallyMoved;
-        if (newSrcQty > 0) {
-            sourceGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, newSrcQty)), sourceIndex);
-        } else {
-            sourceGrid.updateSlot(new ItemGridSlot(), sourceIndex);
-        }
-
-        clearDrag(uuid);
+        return new ItemStack(chosenId, actualTake);
     }
 
-
-
-    private static void handleSplitSafe(
-            String uuid,
-            SlotClickPressWhileDraggingEventData e,
-            int targetSectionId,
-            int salvageSectionId,
-            int storageSectionId,
-            Player playerComponent,
-            UIContext ctx
-    ) {
-        Integer mouseButton = e.getDragPressedMouseButton();
-        Integer sourceIndex = e.getDragSourceSlotId();
-        Integer targetIndex = e.getSlotIndex();
-        Integer sourceSection = e.getDragSourceInventorySectionId();
-
-
-        // Right-click only (mouse button 3). If you want half-split, change moveQty below.
-        if (mouseButton == null || mouseButton != 3) return;
-
-        if (sourceIndex == null || sourceSection == null) return;
-
-        // Clicked outside UI / not on a slot => restore
-        if (targetIndex == null || targetIndex < 0) {
-            restoreDrag(uuid, salvageSectionId, storageSectionId, HOTBAR_SECTION_ID, ctx);
-            return;
-        }
-
-        String targetGridId = (targetSectionId == storageSectionId) ? "storage-grid" : "salvage-grid";
-        ItemGridBuilder targetGrid = ctx.getById(targetGridId, ItemGridBuilder.class).orElse(null);
-
-        ItemGridBuilder sourceGrid =
-                (sourceSection == salvageSectionId) ? ctx.getById("salvage-grid", ItemGridBuilder.class).orElse(null) :
-                        (sourceSection == storageSectionId) ? ctx.getById("storage-grid", ItemGridBuilder.class).orElse(null) :
-                                (sourceSection == targetSectionId) ? targetGrid :
-                                        null;
-
-        if (sourceGrid == null || targetGrid == null) {
-            restoreDrag(uuid, salvageSectionId, storageSectionId, HOTBAR_SECTION_ID,  ctx);
-            return;
-        }
-
-        // Same slot => ignore
-        if (sourceGrid == targetGrid && sourceIndex.equals(targetIndex)) return;
-
-        ItemGridSlot srcSlot = sourceGrid.getSlot(sourceIndex);
-        ItemStack src = (srcSlot != null) ? ItemGridBuilder.getItemStack(srcSlot) : null;
-        if (src == null) {
-            restoreDrag(uuid, salvageSectionId, storageSectionId, HOTBAR_SECTION_ID, ctx);
-            return;
-        }
-
-        // Track original state so cancel/outside restores properly
-        beginDragIfNeeded(uuid, src, sourceIndex, sourceSection);
-
-        int srcQty = src.getQuantity();
-        if (srcQty < 2) { // can't split 1 item
-            clearDrag(uuid);
-            return;
-        }
-
-        String itemId = src.getItem().getId();
-        int maxStack = src.getItem().getMaxStack();
-
-        // Right-click split amount:
-        // If you want HALF split instead, use:
-        // int moveQty = Math.max(1, srcQty / 2);
-
-        ItemGridSlot dstSlot = targetGrid.getSlot(targetIndex);
-        ItemStack dst = (dstSlot != null) ? ItemGridBuilder.getItemStack(dstSlot) : null;
-        int moveQty = (dst == null) ? Math.max(1, srcQty / 2) : 1;
-
-        int actuallyMoved = 0;
-        ItemStack newDst = null;
-
-        if (dst == null) {
-            actuallyMoved = moveQty;
-            newDst = new ItemStack(itemId, actuallyMoved);
-        } else if (dst.getItem().getId().equals(itemId)) {
-            int space = maxStack - dst.getQuantity();
-            if (space <= 0) {
-                clearDrag(uuid);
-                return; // full stack, nothing happens
-            }
-            actuallyMoved = Math.min(moveQty, space);
-            newDst = new ItemStack(itemId, dst.getQuantity() + actuallyMoved);
-        } else {
-            clearDrag(uuid);
-            return; // different item in target => do nothing
-        }
-
-        if (actuallyMoved <= 0) {
-            clearDrag(uuid);
-            return;
-        }
-
-        // Apply updates (target first, then source)
-        targetGrid.updateSlot(new ItemGridSlot(newDst), targetIndex);
-
-        int newSrcQty = srcQty - actuallyMoved;
-        if (newSrcQty > 0) {
-            sourceGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, newSrcQty)), sourceIndex);
-        } else {
-            sourceGrid.updateSlot(new ItemGridSlot(), sourceIndex);
-        }
-
-        if (targetGridId.equals("salvage-grid")) {
-            int cap = targetGrid.getSlots().size();
-            MyModStyles.applyInventorySlotStyles(targetGrid, cap);
-        }
-        if (sourceGrid.equals("salvage-grid")) {
-            int cap = sourceGrid.getSlots().size();
-            MyModStyles.applyInventorySlotStyles(sourceGrid, cap);
-        }
-
-        ctx.getById("storage-grid", ItemGridBuilder.class).ifPresent(storageGrid -> {
-            int invCap = playerComponent.getInventory().getStorage().getCapacity();
-            MyModStyles.applyInventorySlotStyles(storageGrid, invCap);
-        });
-
-        clearDrag(uuid);
-    }
-
-    private static void handleDrop(DroppedEventData drop, ItemGridBuilder targetGrid,
-                                   int targetSectionId, int salvageSectionId, int storageSectionId, int hotbarSectionId,
-                                   UIContext ctx) {
-
-        Integer sourceIndex = drop.getSourceSlotId();
-        Integer targetIndex = drop.getSlotIndex();
-        Integer sourceSection = drop.getSourceInventorySectionId();
-
-        // Dropped outside UI => ignore (and let your DragCancelled restore handle it)
-        if (targetIndex == null) return;
-
-        // Allow left and right drop
-        Integer mouseButton = drop.getPressedMouseButton();
-        if (mouseButton != null && mouseButton == 3) {
-            System.out.println("RIGHT CLICK");
-            return; // right-click handled by SlotClickPressWhileDragging split logic
-        }
-
-        // Ignore same-slot drops
-        if (sourceIndex != null && sourceSection != null
-                && sourceSection == targetSectionId
-                && sourceIndex.equals(targetIndex)) {
-            return;
-        }
-
-        // Resolve source grid (so we can update remaining qty correctly)
-        ItemGridBuilder sourceGrid = null;
-        if (sourceIndex != null && sourceSection != null) {
-            if (sourceSection == targetSectionId) {
-                sourceGrid = targetGrid;
-            } else if (sourceSection == salvageSectionId) {
-                sourceGrid = ctx.getById("salvage-grid", ItemGridBuilder.class).orElse(null);
-            } else if (sourceSection == storageSectionId) {
-                sourceGrid = ctx.getById("storage-grid", ItemGridBuilder.class).orElse(null);
-            }else if (sourceSection == hotbarSectionId) {
-                sourceGrid = ctx.getById("hotbar-grid", ItemGridBuilder.class).orElse(null);
-            }
-        }
-
-        // Read source stack (needed for partial moves like half-split)
-        ItemStack sourceStack = null;
-        int sourceQty = 0;
-        if (sourceGrid != null && sourceIndex != null) {
-            ItemGridSlot s = sourceGrid.getSlot(sourceIndex);
-            sourceStack = s != null ? ItemGridBuilder.getItemStack(s) : null;
-            if (sourceStack != null) {
-                sourceQty = sourceStack.getQuantity();
-            }
-        }
-
-        String itemId = drop.getItemStackId();
-        int movedQty = drop.getItemStackQuantity();
-        if (movedQty <= 0) return;
-
-        // Clamp moved qty to source qty when we have a source slot
-        if (sourceStack != null) {
-            movedQty = Math.min(movedQty, sourceQty);
-            if (movedQty <= 0) return;
-        }
-
-        ItemGridSlot existingSlot = targetGrid.getSlot(targetIndex);
-        ItemStack existing = existingSlot != null ? ItemGridBuilder.getItemStack(existingSlot) : null;
-
-        int placed = 0;
-        int overflowBack = 0;
-
-        if (existing == null) {
-            // Empty target: place moved qty
-            placed = movedQty;
-            targetGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, placed)), targetIndex);
-
-        } else if (existing.getItem().getId().equals(itemId)) {
-            // Same item: merge with max stack
-            int maxStack = existing.getItem().getMaxStack();
-            int space = maxStack - existing.getQuantity();
-            if (space <= 0) return;
-
-            placed = Math.min(movedQty, space);
-            overflowBack = movedQty - placed;
-
-            targetGrid.updateSlot(
-                    new ItemGridSlot(new ItemStack(itemId, existing.getQuantity() + placed)),
-                    targetIndex
-            );
-
-        } else {
-            // Different item in target:
-            // If this was a partial move (half/one), DON'T swap (it feels wrong and can dupe).
-            if (sourceStack != null && movedQty < sourceQty) return;
-
-            // Full stack move => allow swap
-            targetGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, movedQty)), targetIndex);
-
-            if (sourceGrid != null && sourceIndex != null) {
-                sourceGrid.updateSlot(
-                        new ItemGridSlot(new ItemStack(existing.getItem().getId(), existing.getQuantity())),
-                        sourceIndex
-                );
-            }
-            return;
-        }
-
-        // Update source slot remaining for partial moves (THIS is the important part)
-        if (sourceGrid != null && sourceIndex != null && sourceStack != null) {
-            int remaining = sourceQty - movedQty;
-            int finalSourceQty = remaining + overflowBack;
-
-            if (finalSourceQty > 0) {
-                sourceGrid.updateSlot(new ItemGridSlot(new ItemStack(itemId, finalSourceQty)), sourceIndex);
-            } else {
-                sourceGrid.updateSlot(new ItemGridSlot(), sourceIndex);
-            }
-        }
-    }
-
-    private void setSourceSlot(Integer sourceIndex, Integer sourceSection, ItemGridSlot slot,
-                               ItemGridBuilder targetGrid, int targetSectionId,
-                               int salvageSectionId, int storageSectionId,int hotbarSectionId, UIContext ctx) {
-        if (sourceSection == null) return;
-
-        if (sourceSection == targetSectionId) {
-            targetGrid.updateSlot(slot, sourceIndex);
-        } else if (sourceSection == salvageSectionId) {
-            ctx.getById("salvage-grid", ItemGridBuilder.class).ifPresent(grid -> {
-                grid.updateSlot(slot, sourceIndex);
-            });
-        } else if (sourceSection == storageSectionId) {
-            ctx.getById("storage-grid", ItemGridBuilder.class).ifPresent(grid -> {
-                grid.updateSlot(slot, sourceIndex);
-            });
-        }else if (sourceSection == hotbarSectionId) {
-            ctx.getById("hotbar-grid", ItemGridBuilder.class).ifPresent(grid -> {
-                grid.updateSlot(slot, sourceIndex); // or new ItemGridSlot() in clear
-            });
-        }
-    }
-
-    private void clearSourceSlot(Integer sourceIndex, Integer sourceSection,
-                                 ItemGridBuilder targetGrid, int targetSectionId,
-                                 int salvageSectionId, int storageSectionId,int hotbarSectionId,
-                                 Integer targetIndex, UIContext ctx) {
-        if (sourceSection == null) {
-            return;
-        }
-
-        if (sourceSection == targetSectionId) {
-            if (!sourceIndex.equals(targetIndex)) {
-                targetGrid.updateSlot(new ItemGridSlot(), sourceIndex);
-            }
-        } else if (sourceSection == salvageSectionId) {
-            ctx.getById("salvage-grid", ItemGridBuilder.class).ifPresent(grid -> {
-                grid.updateSlot(new ItemGridSlot(), sourceIndex);
-            });
-        } else if (sourceSection == storageSectionId) {
-            ctx.getById("storage-grid", ItemGridBuilder.class).ifPresent(grid -> {
-                grid.updateSlot(new ItemGridSlot(), sourceIndex);
-            });
-        }else if (sourceSection == hotbarSectionId) {
-            ctx.getById("hotbar-grid", ItemGridBuilder.class).ifPresent(grid -> {
-                grid.updateSlot(new ItemGridSlot(), sourceIndex); // or new ItemGridSlot() in clear
-            });
-        }
-    }
-
-//    private void handleDragCancelled(int targetSectionId, int salvageSectionId, int storageSectionId,
-//                                     UIContext ctx) {
-//        if (dragItemId == null || dragSourceIndex < 0) {
-//            return;
-//        }
-//
-//        // Find the source grid and restore original quantity
-//        ItemGridBuilder sourceGrid = null;
-//        if (dragSourceSection == salvageSectionId) {
-//            sourceGrid = ctx.getById("salvage-grid", ItemGridBuilder.class).orElse(null);
-//        } else if (dragSourceSection == storageSectionId) {
-//            sourceGrid = ctx.getById("storage-grid", ItemGridBuilder.class).orElse(null);
-//        }
-//
-//        if (sourceGrid != null) {
-//            sourceGrid.updateSlot(new ItemGridSlot(new ItemStack(
-//                    dragItemId,
-//                    dragOriginalQty
-//            )), dragSourceIndex);
-//        }
-//
-//    }
+    // ==========================================
+    // Drag State Handling
+    // ==========================================
 
     private static final class DragState {
         boolean active;
         String itemId;
-        int qty;
-        int sourceIndex;
-        int sourceSection;
-        int startButton;
-    }
-
-    private static final Map<String, DragState> dragStates = new HashMap<>();
-
-    private static DragState dragState(String uuid) {
-        return dragStates.computeIfAbsent(uuid, k -> new DragState());
+        int qty, sourceIndex, sourceSection;
     }
 
     private static void beginDragIfNeeded(String uuid, ItemStack stack, int sourceIndex, int sourceSection) {
-        DragState st = dragState(uuid);
+        DragState st = dragStates.computeIfAbsent(uuid, k -> new DragState());
         if (st.active) return;
-
         st.active = true;
         st.itemId = stack.getItem().getId();
         st.qty = stack.getQuantity();
@@ -1235,20 +1103,14 @@ public class CraftingUI {
         if (st != null) st.active = false;
     }
 
-    private static void restoreDrag(String uuid, int salvageSectionId, int storageSectionId, int hotbarSectionId, UIContext ctx) {
+    private static void restoreDrag(String uuid, UIContext ctx) {
         DragState st = dragStates.get(uuid);
         if (st == null || !st.active) return;
 
-        ItemGridBuilder sourceGrid =
-                (st.sourceSection == salvageSectionId) ? ctx.getById("salvage-grid", ItemGridBuilder.class).orElse(null) :
-                        (st.sourceSection == storageSectionId) ? ctx.getById("storage-grid", ItemGridBuilder.class).orElse(null) :
-                                (st.sourceSection == hotbarSectionId)  ? ctx.getById("hotbar-grid", ItemGridBuilder.class).orElse(null) :
-                                        null;
-
+        ItemGridBuilder sourceGrid = getGridBySection(st.sourceSection, ctx);
         if (sourceGrid != null && st.sourceIndex >= 0) {
             sourceGrid.updateSlot(new ItemGridSlot(new ItemStack(st.itemId, st.qty)), st.sourceIndex);
         }
-
         clearDrag(uuid);
     }
 }

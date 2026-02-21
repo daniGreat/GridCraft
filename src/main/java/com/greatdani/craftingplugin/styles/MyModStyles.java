@@ -189,6 +189,26 @@ public final class MyModStyles {
         p.setTexturePath(Value.of(path));
         return p;
     }
+    public static void applyCombinedInventoryStyles(ItemGridBuilder invGrid) {
+        ensureOutline();
+        ensureHotbarOverlays();
+
+        // 1. Apply standard outline to Storage (Slots 0 through 35)
+        for (int slot = 0; slot < 36; slot++) {
+            ItemGridSlot s = invGrid.getSlot(slot);
+            if (s != null) {
+                s.setOverlay(OUTLINE);
+            }
+        }
+
+        for (int i = 0; i < 9; i++) {
+            int gridSlotIndex = 36 + i;
+            ItemGridSlot s = invGrid.getSlot(gridSlotIndex);
+            if (s != null) {
+                s.setOverlay(HOTBAR_OVERLAYS[i]);
+            }
+        }
+    }
 
     public static void applyHotbarSlotStyles(ItemGridBuilder hotbarGrid, int capacity) {
         ensureHotbarOverlays();

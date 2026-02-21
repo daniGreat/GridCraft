@@ -1,5 +1,4 @@
-
-<style>
+<style xmlns="http://www.w3.org/1999/html">
     @MyButtonLabel {
         color: #FFFF00;
         font-size: 50;
@@ -62,27 +61,25 @@
                          class="item-grid"
                          data-hyui-slots-per-row="9"
                          data-hyui-style="SlotSpacing: 6; SlotSize: 74"
-                         data-hyui-are-items-draggable="true" style="padding: 8;">
-                    </div>
-                    <div id="hotbar-grid"
-                         class="item-grid"
-                         data-hyui-slots-per-row="9"
-                         data-hyui-style="SlotSpacing: 6; SlotSize: 74"
-                         data-hyui-are-items-draggable="true" style="padding: 8;">
-                        <div class="item-grid-slot"></div>
-                        <div class="item-grid-slot"    ></div>
-                        <div class="item-grid-slot"  ></div>
-                        <div class="item-grid-slot"  ></div>
-                        <div class="item-grid-slot"     ></div>
-                        <div class="item-grid-slot"      ></div>
-                        <div class="item-grid-slot"      ></div>
-                        <div class="item-grid-slot"     ></div>
-                        <div class="item-grid-slot"      ></div>
+                         data-hyui-are-items-draggable="true"
+                         style="padding: 25; anchor-height: 490;">
+                        <!-- 45 slots total (36 Storage + 9 Hotbar) -->
+                        <!-- Row 1-4: 36 Storage slots -->
+                        <!-- 36 Storage slots -->
+                        <div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div>
+                        <div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div>
+                        <div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div>
+                        <div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div>
+
+                        <!-- 9 Hotbar slots -->
+                        <div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div>
+                        <div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div>
+                        <div class="item-grid-slot"></div><div class="item-grid-slot"></div><div class="item-grid-slot"></div>
                     </div>
                 </div>
 
         </div>
-        <div class="container" style="anchor-left: 1400; anchor-width: 400; anchor-height: 700;">
+        <div class="container" style="anchor-left: 1400; anchor-width: 400; anchor-height: 720;">
             <div class="container-title">
                 <!-- Title elements -->
                 <label id="my-recipe-label"></label>
@@ -97,7 +94,7 @@
                              class="item-grid"
                              data-hyui-slots-per-row="3"
                              data-hyui-style="SlotSpacing: 6; SlotSize: 74"
-                             data-hyui-are-items-draggable="false" style="padding-top: 100; ">
+                             data-hyui-are-items-draggable="false" style="padding-top: 70; ">
                         </div>
                     </div>
                     <div style="layout-mode: center;">
@@ -105,9 +102,17 @@
                              class="item-grid"
                              data-hyui-slots-per-row="1"
                              data-hyui-style="SlotSpacing: 6; SlotSize: 74"
-                             data-hyui-are-items-draggable="false" style="padding-top: 20;">
+                             data-hyui-are-items-draggable="false" style="padding-top: 20; padding-bottom: 10;">
                         </div>
                     </div>
-            </div>
+                </div>
+                <div style="flex-direction: row; align-items: flex-start;">
+                    <label id="quantity-text" style="padding-right: 20; padding-top: 5;">Quantity: </label>
+                    <input type="number" style="anchor-width: 100;" id="auto-fill-qty" value="" min="0" max="100" step="5" /> </input>
+                </div>
+                <button id="craft-button" style="padding-top: 9">
+                </button>
+                <button id="moveto-inventory-button" style="padding-top: 9">
+                </button>
         </div>
     </div>
