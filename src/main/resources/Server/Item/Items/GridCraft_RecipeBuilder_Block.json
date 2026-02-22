@@ -1,0 +1,78 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.GridCraft_RecipeBuilder_Block.name",
+    "Description": "server.items.GridCraft_RecipeBuilder_Block.description"
+  },
+  "ItemLevel": 600,
+  "Icon": "Icons/ItemsGenerated/GridCraft_RecipeBuilder_Block.png",
+  "PlayerAnimationsId": "Block",
+  "Set": "Soil",
+  "BlockType": {
+    "Material": "Solid",
+    "DrawType": "Model",
+    "Group": "Dirt",
+    "Flags": {},
+    "Gathering": {
+      "Breaking": {
+        "GatherType": "Soils"
+      }
+    },
+    "BlockParticleSetId": "Stone",
+    "Interactions": {
+      "Use": {
+        "Interactions": [
+          {
+            "Type": "ChangeState",
+            "Changes": {
+              "default": "Off",
+              "On": "Off",
+              "Off": "On"
+            }
+          }
+        ]
+      }
+    },
+    "BlockEntity": {
+      "Components": {
+        "RecipeBuilderBlock": {}
+      }
+    },
+    "ParticleColor": "#c38206",
+    "BlockSoundSetId": "Gravel",
+    "TransitionTexture": "BlockTextures/Transition_Ashes.png",
+    "TransitionToGroups": [
+      "Stone",
+      "Lava",
+      "Dirt"
+    ],
+    "CustomModel": "Blocks/GridCraft_RecipeBuilder.blockymodel",
+    "CustomModelTexture": [
+      {
+        "Texture": "BlockTextures/RecipeBuilder_Texture.png"
+      }
+    ],
+    "State": {
+      "Id": "craftingtable"
+    },
+    "CustomModelScale": 1.7
+  },
+  "Tags": {
+    "Type": [
+      "Soil"
+    ]
+  },
+  "ItemSoundSetId": "ISS_Blocks_Soft",
+  "IconProperties": {
+    "Scale": 0.8,
+    "Rotation": [
+      306,
+      140,
+      0
+    ],
+    "Translation": [
+      4,
+      -6
+    ]
+  },
+  "MaxStack": 16
+}

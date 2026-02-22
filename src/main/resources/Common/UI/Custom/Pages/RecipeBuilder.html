@@ -1,20 +1,3 @@
-<style xmlns="http://www.w3.org/1999/html">
-    @MyButtonLabel {
-        color: #FFFF00;
-        font-size: 50;
-        font-weight: bold;
-    }
-    @MyButtonBg {
-        background-color: #0c0c0c;
-        font-size: 50;
-        font-weight: bold;
-    }
-        @HoverBackground {
-        background-color: #0c0c0c;
-        font-size: 50;
-        font-weight: bold;
-    }
-</style>
 
     <div class="page-overlay">
         <div class="container" style="anchor-width: 800; anchor-height: 900;">
@@ -79,40 +62,63 @@
                 </div>
 
         </div>
-        <div class="container" style="anchor-left: 1400; anchor-width: 400; anchor-height: 900;">
+        <div class="container" style="anchor-left: 1400; anchor-width: 400; anchor-height: 720;">
             <div class="container-title">
-                <!-- Title elements -->
                 <label id="my-recipe-label"></label>
             </div>
-            <div class="container-contents">
-                <div style="flex-direction: column; align-items: center;">
-                    <select id="Recipe">
-                    </select>
-                    <label id="recipe-req-text" style="padding-top: 16;"></label>
-                    <div style="layout-mode: center;">
-                        <div id="terminal-view"
-                             class="item-grid"
-                             data-hyui-slots-per-row="3"
-                             data-hyui-style="SlotSpacing: 6; SlotSize: 74"
-                             data-hyui-are-items-draggable="false" style="padding-top: 70; ">
-                        </div>
-                    </div>
-                    <div style="layout-mode: center;">
-                        <div id="output-terminal-view"
-                             class="item-grid"
-                             data-hyui-slots-per-row="1"
-                             data-hyui-style="SlotSpacing: 6; SlotSize: 74"
-                             data-hyui-are-items-draggable="false" style="padding-top: 20; padding-bottom: 10;">
-                        </div>
-                    </div>
-                </div>
+
+            <!-- NEW: Save Tools -->
+            <div class="container-contents" style="flex-direction: column; align-items: center;">
+                <label style="color: #FFFF00; font-size: 16; padding-bottom: 20;">Recipe File Name:</label>
+                <input type="text" id="recipe-name-input"  value="" placeholder="my_custom_recipe" maxlength="30"  />
+
+                <button id="save-recipe-btn" style="anchor-width: 200; anchor-height: 50; padding-top: 20;">
+                    <label style="color: #FFFFFF; align: center; font-size: 18; render-bold: true;">Save to JSON</label>
+                </button>
+                <label style="color: #FFFF00; font-size: 25; padding-top: 20;padding-bottom: 20; render-bold: true; align: center;">Settings</label>
                 <div style="flex-direction: row; align-items: flex-start;">
-                    <label id="quantity-text" style="padding-right: 20; padding-top: 5;">Quantity: </label>
-                    <input type="number" style="anchor-width: 100;" id="auto-fill-qty" value="" min="0" max="100" step="5" /> </input>
+                    <label id="quantity-input-text" style="padding-right: 20; padding-top: 5;">Input Quantity: </label>
+                    <input type="number" style="anchor-width: 100; anchor-left: 13;" id="set-input" value="" min="0" max="100" step="5" /> </input>
                 </div>
-                <button id="craft-button" style="padding-top: 9">
-                </button>
-                <button id="moveto-inventory-button" style="padding-top: 9">
-                </button>
+                <div style="flex-direction: row; align-items: flex-start; ">
+                    <label id="quantity-ouput-text" style="padding-right: 20; margin-top: 18;">Output Quantity: </label>
+                    <input type="number" style="anchor-width: 100; margin-top: 10;" id="set-output" value="" min="0" max="100" step="5" /> </input>
+                </div>
+                <div style="flex-direction: row; align-items: flex-start; ">
+                    <button id="clear-salvage-recipe-btn" style="anchor-width: 180; anchor-height: 50; padding-top: 10; padding-right: 5;">
+                        <label style="color: #FFFFFF; font-size: 8; ">Clear grid</label>
+                    </button>
+                    <button id="clear-recipe-btn" style="anchor-width: 180; anchor-height: 50; padding-top: 10;">
+                        <label style="color: #FFFFFF; font-size: 8; ">Clear output</label>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="container" style="anchor-right: 1400; anchor-width: 400; anchor-height: 720;">
+            <div class="container-title">
+                <label id="my-info-label"></label>
+            </div>
+            <div class="container-contents" style="flex-direction: column; align-items: center;">
+                <label style="color: #FFFF00; font-size: 14; render-bold: true; padding-bottom: 5;">Setting Quantities</label>
+                <label style="color: #FFFFFF; font-size: 12; padding-bottom: 3;">• Drag item into crafting grid normally</label>
+                <label style="color: #FFFFFF; font-size: 12; padding-bottom: 3;">• Right-click a filled slot to set custom input qty</label>
+                <label style="color: #FFFFFF; font-size: 12; padding-bottom: 15;">• Use Output Quantity to set result qty</label>
+
+                <label style="color: #FFFF00; font-size: 14; render-bold: true; padding-bottom: 5;">Saving a Recipe</label>
+                <label style="color: #FFFFFF; font-size: 12; padding-bottom: 3;">• Fill the 3x3 grid with your ingredients</label>
+                <label style="color: #FFFFFF; font-size: 12; padding-bottom: 3;">• Place the result item in the output slot</label>
+                <label style="color: #FFFFFF; font-size: 12; padding-bottom: 3;">• Type a filename and click Save to JSON</label>
+                <label style="color: #FFFFFF; font-size: 12; padding-bottom: 15;">• Files save to: Recipes/ folder</label>
+
+                <label style="color: #FFFF00; font-size: 14; render-bold: true; padding-bottom: 5;">Tips</label>
+                <label style="color: #FFFFFF; font-size: 12; padding-bottom: 3;">• Duplicate patterns will be rejected on save</label>
+                <label style="color: #FFFFFF; font-size: 12; padding-bottom: 3;">• Use Clear Grid to return items to inventory</label>
+                <label style="color: #FFFFFF; font-size: 12; padding-bottom: 3;">• Use Clear Output to return the result item</label>
+                <label style="color: #FFFFFF; font-size: 12; padding-bottom: 3;">• Closing returns all items to your inventory</label>
+                <label style="color: #FFFF00; font-size: 14; render-bold: true; padding-bottom: 5; padding-top: 10;">Commands</label>
+                <label style="color: #FFFFFF; font-size: 12; padding-bottom: 3;">• /gridcraft reload</label>
+                <label style="color: #FFFFFF; font-size: 12; padding-bottom: 3;">  Reloads all recipes from the Recipes/ folder</label>
+            </div>
         </div>
     </div>

@@ -18,19 +18,14 @@ import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.inventory.container.ItemContainer;
 import com.hypixel.hytale.server.core.modules.i18n.I18nModule;
-import com.hypixel.hytale.server.core.ui.ItemGridSlot;
-import com.hypixel.hytale.server.core.ui.LocalizableString;
-import com.hypixel.hytale.server.core.ui.PatchStyle;
-import com.hypixel.hytale.server.core.ui.Value;
+import com.hypixel.hytale.server.core.ui.*;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
 import java.awt.*;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.greatdani.craftingplugin.crafting.RecipeRegistry.prettyItemId;
@@ -100,6 +95,10 @@ public class CraftingUI {
             button.withText("Clear Grid");
         });
 
+        page.getById("reload-recipes-btn", ButtonBuilder.class).ifPresent(button -> {
+            button.withText("Reload Recipes");
+        });
+
         page.getById("Recipe", DropdownBoxBuilder.class).ifPresent(dropdown -> {
             for (CraftingRecipe r : RecipeRegistry.getAllRecipes()) {
                 if (r.getId() == null || r.getId().isBlank()) continue;
@@ -117,8 +116,11 @@ public class CraftingUI {
                 updateRecipeOutputPreview(ctx, r);
                 ctx.updatePage(false);
             });
-            dropdown.withStyle(new HyUIStyle());
+            dropdown.withStyle(new DropdownBoxStyle());
+
         });
+
+
 
         // Setup Labels
         setupLabel(page, "my-label", "Crafting Table", 20);
@@ -341,6 +343,7 @@ public class CraftingUI {
             MyModStyles.applyInventorySlotStyles(salvage, 9);
             ctx.updatePage(false);
         });
+
 
         page.addEventListener("output-grid", CustomUIEventBindingType.SlotClicking, SlotClickingEventData.class, (click, ctx) -> {
             attemptCrafting(uuid, ctx, playerComponent);

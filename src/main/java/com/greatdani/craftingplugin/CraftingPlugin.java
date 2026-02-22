@@ -2,6 +2,8 @@ package com.greatdani.craftingplugin;
 
 import com.greatdani.craftingplugin.blocks.CraftingTableBlock;
 import com.greatdani.craftingplugin.blocks.CraftingTableInitializer;
+import com.greatdani.craftingplugin.blocks.RecipeBuilderBlock;
+import com.greatdani.craftingplugin.commands.RecipeCommand;
 import com.greatdani.craftingplugin.crafting.RecipeRegistry;
 import com.greatdani.craftingplugin.systems.CraftingTableSystem;
 import com.hypixel.hytale.component.ComponentType;
@@ -19,6 +21,7 @@ public class CraftingPlugin extends JavaPlugin {
 
     protected static CraftingPlugin instance;
     private ComponentType craftingBlockComponentType;
+    private ComponentType recipeBuilderBlockComponentType;
 
     public CraftingPlugin(JavaPluginInit init) {
         super(init);
@@ -34,6 +37,9 @@ public class CraftingPlugin extends JavaPlugin {
     @Override
     protected void setup() {
         this.craftingBlockComponentType = this.getChunkStoreRegistry().registerComponent(CraftingTableBlock.class, "CraftingTableBlock", CraftingTableBlock.CODEC);
+        this.recipeBuilderBlockComponentType = this.getChunkStoreRegistry().registerComponent(RecipeBuilderBlock.class, "RecipeBuilderBlock", RecipeBuilderBlock.CODEC);
+
+        this.getCommandRegistry().registerCommand(new RecipeCommand());
 
         PacketAdapters.registerInbound(new PacketListener());
 
@@ -55,6 +61,9 @@ public class CraftingPlugin extends JavaPlugin {
 
     public ComponentType getCraftingTableBlockComponentType() {
         return this.craftingBlockComponentType;
+    }
+    public ComponentType getRecipeBuilderBlockComponentType() {
+        return this.recipeBuilderBlockComponentType;
     }
 
 }

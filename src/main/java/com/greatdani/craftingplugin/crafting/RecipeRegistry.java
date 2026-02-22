@@ -20,8 +20,12 @@ public class RecipeRegistry {
     private static final Gson gson = new Gson();
     private static final Map<String, CraftingRecipe> byId = new HashMap<>();
 
+    private static Path recipesFolder;
+
     public static void init(Path recipesFolder) {
+        RecipeRegistry.recipesFolder = recipesFolder;
         recipes.clear();
+        byId.clear();
 
         try {
             if (!Files.exists(recipesFolder)) {
@@ -48,6 +52,12 @@ public class RecipeRegistry {
         }
 
         System.out.println("Loaded " + recipes.size() + " recipes.");
+    }
+
+    public static void reload() {
+        if (recipesFolder != null) {
+            init(recipesFolder);
+        }
     }
 
     private static void loadRecipeFile(String json, Path path) {
